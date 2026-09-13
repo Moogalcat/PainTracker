@@ -1,35 +1,35 @@
 :root {
   color-scheme: light;
-  --bg: #f3eee6;
-  --surface: #fffaf3;
-  --surface-2: #ece3d8;
-  --text: #26221f;
-  --text-dim: #756b63;
-  --line: #ded2c6;
-  --line-strong: #b8aa9d;
-  --accent: #b4533c;
-  --accent-hover: #963e2c;
-  --accent-soft: #f3dcd4;
-  --accent-text: #fffdf9;
+  --bg: #edf3f5;
+  --surface: #f8fbfc;
+  --surface-2: #dfeaed;
+  --text: #203038;
+  --text-dim: #657780;
+  --line: #d2e0e4;
+  --line-strong: #a6bac1;
+  --accent: #347687;
+  --accent-hover: #286b7c;
+  --accent-soft: #d4e9ee;
+  --accent-text: #f7fdff;
   --danger: #a23434;
-  --shadow: 0 8px 28px rgb(62 43 30 / 0.08);
+  --shadow: 0 8px 28px rgb(30 61 72 / 0.08);
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #1c1b1a;
-  --surface: #262422;
-  --surface-2: #312e2b;
-  --text: #f1eae2;
-  --text-dim: #afa49b;
-  --line: #403b37;
-  --line-strong: #655d57;
-  --accent: #db765c;
-  --accent-hover: #ed8e75;
-  --accent-soft: #4a2e27;
-  --accent-text: #1d1613;
+  --bg: #131a1d;
+  --surface: #1c2529;
+  --surface-2: #263238;
+  --text: #e8f0f2;
+  --text-dim: #9aabb1;
+  --line: #344348;
+  --line-strong: #52666d;
+  --accent: #64b5c7;
+  --accent-hover: #7ac9d8;
+  --accent-soft: #203f47;
+  --accent-text: #102025;
   --danger: #f19393;
   --shadow: 0 10px 34px rgb(0 0 0 / 0.24);
 }
@@ -37,17 +37,17 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --bg: #1c1b1a;
-    --surface: #262422;
-    --surface-2: #312e2b;
-    --text: #f1eae2;
-    --text-dim: #afa49b;
-    --line: #403b37;
-    --line-strong: #655d57;
-    --accent: #db765c;
-    --accent-hover: #ed8e75;
-    --accent-soft: #4a2e27;
-    --accent-text: #1d1613;
+    --bg: #131a1d;
+    --surface: #1c2529;
+    --surface-2: #263238;
+    --text: #e8f0f2;
+    --text-dim: #9aabb1;
+    --line: #344348;
+    --line-strong: #52666d;
+    --accent: #64b5c7;
+    --accent-hover: #7ac9d8;
+    --accent-soft: #203f47;
+    --accent-text: #102025;
     --danger: #f19393;
     --shadow: 0 10px 34px rgb(0 0 0 / 0.24);
   }
