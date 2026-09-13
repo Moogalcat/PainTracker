@@ -71,6 +71,11 @@ button, input, textarea, select { font: inherit; }
 button { color: inherit; }
 button, summary, .chip { -webkit-tap-highlight-color: transparent; }
 
+@media (display-mode: standalone), (display-mode: fullscreen), (display-mode: minimal-ui) {
+  .browser-only { display: none; }
+}
+.standalone .browser-only { display: none; }
+
 .topbar {
   display: flex;
   justify-content: space-between;
@@ -257,6 +262,8 @@ summary { padding: 16px 0; color: var(--text-dim); font-size: .92rem; font-weigh
 .panel-status { font-weight: 450; }
 .panel-status.stale { color: var(--accent); font-weight: 700; }
 .note { max-width: 34rem; color: var(--text-dim); font-size: .87rem; line-height: 1.6; }
+.install-steps { max-width: 34rem; margin: 8px 0 18px; padding-left: 1.2rem; color: var(--text-dim); font-size: .87rem; line-height: 1.6; }
+.install-steps li + li { margin-top: 7px; }
 .footer select { margin-bottom: 14px; }
 
 .stats { padding: 0 0 20px; }

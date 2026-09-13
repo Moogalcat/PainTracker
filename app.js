@@ -1,6 +1,10 @@
 /* Pain Tracker — all data stays in this browser's localStorage. */
 'use strict';
 
+if (window.navigator && window.navigator.standalone === true && document.documentElement) {
+  document.documentElement.classList.add('standalone');
+}
+
 const KEY = 'pain-tracker-v1';
 const META_KEY = 'pain-tracker-meta-v1';
 const BUILT_IN_SYMPTOMS = ['Stomach-ache', 'Headache', 'Nausea', 'Dizziness'];
