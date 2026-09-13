@@ -1,0 +1,14 @@
+{
+  "name": "Pain Tracker",
+  "short_name": "Pain",
+  "description": "A simple, private pain and symptom tracker that works offline.",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f3eee6",
+  "theme_color": "#f3eee6",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

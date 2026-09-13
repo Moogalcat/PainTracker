@@ -1,0 +1,10 @@
+# OS cruft
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Local tool settings
+.claude/settings.local.json
+
+# Local diary exports contain private health data
+pain-tracker-*.json

@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Pain Tracker</title>
+  <meta name="description" content="A simple, private pain and symptom tracker that works offline.">
+  <meta name="robots" content="noindex, nofollow">
+  <meta name="theme-color" content="#f3eee6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1c1b1a" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Pain Tracker">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <p class="kicker">Personal record</p>
+      <h1>Pain Tracker</h1>
+    </div>
+    <p class="tally" id="tally" aria-live="polite"></p>
+  </header>
+
+  <main>
+    <section id="recovery" class="notice error" role="alert" hidden>
+      <strong>Your saved data could not be read.</strong>
+      <p>It has been left untouched. Download a recovery copy or retry reading. Logging is paused to protect your history.</p>
+      <div class="row">
+        <button class="btn btn-ghost btn-sm" id="recoveryExport">Download recovery copy</button>
+        <button class="btn btn-ghost btn-sm" id="recoveryRetry">Retry reading</button>
+      </div>
+    </section>
+    <p id="appError" class="notice error" role="alert" hidden></p>
+
+    <div class="actions">
+      <button type="button" id="logNow" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        Log pain
+      </button>
+    </div>
+
+    <ul class="list" id="list"></ul>
+    <button class="btn btn-ghost btn-sm show-older" id="showOlder" hidden>Show older entries</button>
+
+    <p class="empty" id="empty" hidden>
+      No entries yet.<br>
+      Tap <strong>Log pain</strong> to add one. The current date and time are filled in for you.
+    </p>
+  </main>
+
+  <footer class="footer">
+    <details>
+      <summary>Statistics<span class="panel-status" id="statsStatus"></span></summary>
+      <div class="stats" id="stats"></div>
+    </details>
+    <details>
+      <summary>Appearance</summary>
+      <label for="theme">Colour theme</label>
+      <select id="theme">
+        <option value="system">System</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </details>
+    <details>
+      <summary>Backup &amp; data<span class="panel-status" id="backupStatus"></span></summary>
+      <p class="note">Entries stay only on this device, in this browser. Nothing is uploaded. Export a backup occasionally so you do not lose your history.</p>
+      <div class="row">
+        <button type="button" class="btn btn-ghost btn-sm" id="exportBtn">Export backup</button>
+        <button type="button" class="btn btn-ghost btn-sm" id="importBtn">Import backup</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden>
+      </div>
+      <p id="importResult" class="notice" role="status" hidden></p>
+    </details>
+  </footer>
+
+  <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+  <template id="entryTpl">
+    <li class="card entry">
+      <button type="button" class="entry-head" data-act="toggle" aria-expanded="false">
+        <span class="entry-head-main">
+          <span class="entry-when"></span>
+          <span class="entry-meta"></span>
+          <span class="entry-notes"></span>
+        </span>
+        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="entry-body" hidden>
+        <p class="entry-error error" role="alert" hidden></p>
+
+        <label class="field-label" for="">Date &amp; time</label>
+        <input type="datetime-local" data-field="at" required>
+
+        <fieldset class="control-group">
+          <legend>Symptoms</legend>
+          <p class="field-hint">Tap a symptom, then choose its intensity.</p>
+          <div class="chips" data-chips="symptoms"></div>
+          <div class="ratings" data-ratings></div>
+        </fieldset>
+
+        <fieldset class="control-group">
+          <legend>Possible triggers</legend>
+          <p class="field-hint">Add anything that may have contributed.</p>
+          <div class="chips" data-chips="triggers"></div>
+        </fieldset>
+
+        <label class="field-label">Notes</label>
+        <textarea data-field="notes" rows="4" placeholder="Anything else worth remembering…"></textarea>
+
+        <div class="row entry-actions">
+          <button type="button" class="btn btn-primary btn-sm" data-act="save">Save</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-act="cancel">Cancel</button>
+          <button type="button" class="btn btn-danger btn-sm" data-act="delete">Delete</button>
+        </div>
+      </div>
+    </li>
+  </template>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
