@@ -39,7 +39,7 @@ test('strict reading rejects corrupt records and repeated IDs', () => {
 
 test('backup round trip retains custom items and preferences', () => {
   const original = { ...state([entry({ characteristics: ['Throbbing'], relief: [{ name: 'Heat', effectiveness: 'Strong' }], impact: 2 })]), customSymptoms: ['Jaw pain'],
-    customCharacteristics: ['Heavy'], customRelief: ['Tea'], customTriggers: ['Stress'], preferences: { theme: 'dark', reminderMinutes: 60 } };
+    customCharacteristics: ['Heavy'], customRelief: ['Tea'], customTriggers: ['Stress'], preferences: { theme: 'dark', reminderMinutes: 960 } };
   const restored = D.parse(JSON.parse(JSON.stringify(original)), true);
   assert.deepEqual(restored.entries[0].symptoms, [{ name: 'Headache', intensity: 7 }]);
   assert.deepEqual(restored.entries[0].characteristics, ['Throbbing']);
@@ -49,7 +49,7 @@ test('backup round trip retains custom items and preferences', () => {
   assert.deepEqual(restored.customCharacteristics, ['Heavy']);
   assert.deepEqual(restored.customRelief, ['Tea']);
   assert.equal(restored.preferences.theme, 'dark');
-  assert.equal(restored.preferences.reminderMinutes, 60);
+  assert.equal(restored.preferences.reminderMinutes, 960);
 });
 
 test('older entries migrate with safe defaults for new tracking fields', () => {

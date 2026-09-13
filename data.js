@@ -4,7 +4,7 @@
 const PainData = (() => {
   const themes = ['system', 'light', 'dark'];
   const reliefLevels = ['None', 'Some', 'Strong'];
-  const reminderMinutes = [0, 30, 60, 120, 240];
+  const reminderMinutes = [0, 30, 60, 120, 240, 480, 960];
   const isDate = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
   const uid = () => globalThis.crypto?.randomUUID?.()
     || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
