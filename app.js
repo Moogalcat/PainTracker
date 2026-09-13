@@ -227,7 +227,6 @@ function fillEditor(card, entry) {
   ongoing.checked = entry.ongoing;
   const ended = card.querySelector('[data-field="endedAt"]');
   ended.value = entry.endedAt ? PainData.toInput(new Date(entry.endedAt)) : '';
-  updateEndControl(card);
   card.querySelector('[data-field="notes"]').value = entry.notes;
   renderSymptomChips(card.querySelector('[data-chips="symptoms"]'), entry.symptoms);
   renderRatings(card.querySelector('[data-ratings]'), entry.symptoms);
@@ -236,14 +235,6 @@ function fillEditor(card, entry) {
   renderReliefChips(card.querySelector('[data-chips="relief"]'), entry.relief);
   renderReliefRatings(card.querySelector('[data-relief-ratings]'), entry.relief);
   renderTriggerChips(card.querySelector('[data-chips="triggers"]'), entry.triggers);
-}
-
-function updateEndControl(card) {
-  const ongoing = card.querySelector('[data-field="ongoing"]').checked;
-  const row = card.querySelector('[data-end-row]');
-  const input = row.querySelector('[data-field="endedAt"]');
-  input.disabled = ongoing;
-  row.classList.toggle('disabled', ongoing);
 }
 
 function allSymptoms() {
@@ -1144,10 +1135,12 @@ list.addEventListener('click', event => {
 });
 
 list.addEventListener('change', event => {
-  if (!event.target.matches('[data-field="ongoing"]')) return;
   const card = event.target.closest('.entry');
-  if (event.target.checked) card.querySelector('[data-field="endedAt"]').value = '';
-  updateEndControl(card);
+  if (event.target.matches('[data-field="ongoing"]')) {
+    if (event.target.checked) card.querySelector('[data-field="endedAt"]').value = '';
+  } else if (event.target.matches('[data-field="endedAt"]')) {
+    if (event.target.value) card.querySelector('[data-field="ongoing"]').checked = false;
+  } else return;
   showCardError(card, '');
 });
 

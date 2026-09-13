@@ -207,7 +207,6 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
 .timing-options { display: grid; gap: 13px; margin-top: 13px; }
 .check-line { display: inline-flex; width: fit-content; align-items: center; gap: 8px; color: var(--text-dim); font-size: .86rem; font-weight: 650; cursor: pointer; }
 .check-line input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
-[data-end-row].disabled { opacity: .5; }
 .control-group { min-width: 0; padding: 0; margin: 22px 0; border: 0; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
