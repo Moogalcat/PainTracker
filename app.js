@@ -1,4 +1,4 @@
-/* Pain Tracker — all data stays in this browser's localStorage. */
+/* Pain Tracker — local-first data storage with optional cloud sync. */
 'use strict';
 
 if (window.navigator && window.navigator.standalone === true && document.documentElement) {
@@ -72,7 +72,7 @@ function loadState() {
   }
 }
 
-function persistState(next, recovering = false) {
+function persistState(next, recovering = false, fromSync = false) {
   if (storageBlocked && !recovering) return false;
   try {
     if (!recovering && localStorage.getItem(KEY) !== lastRaw) {
@@ -96,6 +96,7 @@ function persistState(next, recovering = false) {
     entries = saved.entries;
     storageBlocked = false;
     $('appError').hidden = true;
+    if (!fromSync) window.PainTrackerSyncStateChanged?.();
     return true;
   } catch (error) {
     console.error(error);
@@ -1406,6 +1407,22 @@ window.addEventListener('storage', event => {
 applyTheme();
 $('reportMonth').value = PainData.toInput(new Date()).slice(0, 7);
 render();
+
+window.PainTrackerAppSync = {
+  getState: () => JSON.parse(JSON.stringify(state)),
+  applyState(value) {
+    try {
+      const parsed = PainData.parse(value, true);
+      if (!persistState(parsed, false, true)) return false;
+      applyTheme();
+      render();
+      return true;
+    } catch (error) {
+      console.error('Cloud state could not be applied', error);
+      return false;
+    }
+  },
+};
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(error => console.warn('Offline mode unavailable', error)));

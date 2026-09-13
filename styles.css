@@ -340,6 +340,7 @@ summary { padding: 16px 0; color: var(--text-dim); font-size: .92rem; font-weigh
 .system-feature > summary .panel-status { color: inherit; font-weight: inherit; }
 .panel-status { font-weight: 450; }
 .panel-status.stale { color: var(--accent); font-weight: 700; }
+.sync-account { margin: 12px 0 0; color: var(--text); font-size: .92rem; overflow-wrap: anywhere; }
 .note { max-width: 34rem; color: var(--text-dim); font-size: .87rem; line-height: 1.6; }
 .install-steps { max-width: 34rem; margin: 8px 0 18px; padding-left: 1.2rem; color: var(--text-dim); font-size: .87rem; line-height: 1.6; }
 .install-steps li + li { margin-top: 7px; }

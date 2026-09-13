@@ -116,9 +116,19 @@
           <li><strong>iPhone or iPad:</strong> open the site in Safari, tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</li>
         </ul>
       </details>
+      <details class="system-feature" id="syncPanel">
+        <summary>Sync between devices<span class="panel-status" id="syncStatus"> · Setup needed</span></summary>
+        <p class="note" id="syncDescription">Sign in with the same Google account on each device to keep saved entries in sync. Logging continues to work offline.</p>
+        <p class="sync-account" id="syncAccount" hidden></p>
+        <div class="row">
+          <button type="button" class="btn btn-ghost btn-sm" id="syncSignIn" disabled>Sign in with Google</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="syncSignOut" hidden>Sign out</button>
+        </div>
+        <p id="syncResult" class="notice" role="status" hidden></p>
+      </details>
       <details class="system-feature">
         <summary>Backup &amp; data<span class="panel-status" id="backupStatus"></span></summary>
-        <p class="note">Entries stay only on this device, in this browser. Nothing is uploaded. Export a backup occasionally so you do not lose your history.</p>
+        <p class="note">Export a backup occasionally so you have a separate copy of your history, even when sync is on.</p>
         <div class="row">
           <button type="button" class="btn btn-ghost btn-sm" id="exportBtn">Export backup</button>
           <button type="button" class="btn btn-ghost btn-sm" id="importBtn">Import backup</button>
@@ -214,7 +224,10 @@
     </li>
   </template>
 
-  <script src="data.js"></script>
-  <script src="app.js"></script>
+  <script src="data.js?v=21"></script>
+  <script src="sync-data.js?v=21"></script>
+  <script src="app.js?v=21"></script>
+  <script src="firebase-config.js?v=21"></script>
+  <script type="module" src="sync.js?v=21"></script>
 </body>
 </html>

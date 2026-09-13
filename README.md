@@ -1,6 +1,6 @@
 # Pain Tracker
 
-A small, private, installable pain diary inspired by the companion Migraine Log app. It runs entirely in the browser and has no runtime dependencies or build step.
+A small, private, installable pain diary inspired by the companion Migraine Log app. It is local-first, has no build step, and can optionally sync through Firebase.
 
 ## Features
 
@@ -18,6 +18,7 @@ A small, private, installable pain diary inspired by the companion Migraine Log 
 - Optional in-app and system reminders for ongoing entries
 - Light/dark themes and JSON backup and restore
 - Offline support through a service worker
+- Optional cross-device sync with Google sign-in
 
 ## Run locally
 
@@ -35,4 +36,12 @@ Then open `http://localhost:8080`.
 node --test tools/test.cjs
 ```
 
-All health data stays in browser `localStorage`. Exported JSON backups are the user's responsibility.
+The diary remains available in browser `localStorage`, including while offline. When Firebase sync is enabled and the user signs in, saved entries, custom options, theme, and reminder preference are also stored in that user's private Firestore path and changes upload after reconnecting.
+
+## Firebase setup
+
+1. Create a Firebase web app and place its public configuration in `firebase-config.js`.
+2. Enable Google as a Firebase Authentication sign-in provider and add the deployed site hostname to Authentication's authorized domains.
+3. Create a Firestore database and deploy `firestore.rules` with `firebase deploy --only firestore:rules`.
+
+The rules permit a signed-in user to read and append records only inside their own `users/{uid}/changes` collection. Existing records cannot be changed or deleted by clients.

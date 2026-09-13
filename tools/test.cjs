@@ -2,6 +2,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const D = require('../data.js');
+global.PainData = D;
+const S = require('../sync-data.js');
 
 const at = '2026-09-13T10:00:00.000Z';
 const entry = (overrides = {}) => D.normalise({
@@ -148,4 +150,60 @@ test('known causes stay separate from possible triggers', () => {
   assert.deepEqual(restored.entries[0].knownCauses, ['Dental work']);
   assert.equal(D.valid({ at, knownCauses: [''] }), false);
   assert.notEqual(D.contentKey(result), D.contentKey(entry({ triggers: ['Stress', 'Dental work'] })));
+});
+
+test('sync reads legacy entry records and uploads new records with an explicit kind', () => {
+  assert.equal(S.isEntryChange({ id: 'legacy', deleted: true }), true);
+  assert.equal(S.isEntryChange({ kind: 'settings', id: 'settings' }), false);
+  const result = S.reconcileEntries(state([entry()]), []);
+  assert.equal(result.uploads.length, 1);
+  assert.equal(result.uploads[0].kind, 'entry');
+});
+
+test('sync combines independent entries from two devices', () => {
+  const local = entry({ id: 'local', at: '2026-09-13T10:00:00Z' });
+  const remote = entry({ id: 'remote', at: '2026-09-14T10:00:00Z' });
+  const result = S.reconcileEntries(state([local]), [{ kind: 'entry', id: remote.id,
+    modifiedAt: remote.at, deleted: false, entry: remote }]);
+  assert.deepEqual(result.state.entries.map(item => item.id), ['remote', 'local']);
+  assert.equal(result.uploads[0].id, 'local');
+});
+
+test('sync keeps the newest edit and sends a newer local edit back to the cloud', () => {
+  const local = entry({ updatedAt: '2026-09-13T11:00:00Z', notes: 'Local' });
+  const remote = entry({ updatedAt: '2026-09-13T12:00:00Z', notes: 'Remote' });
+  const newer = S.reconcileEntries(state([local]), [{ kind: 'entry', id: remote.id,
+    modifiedAt: remote.updatedAt, deleted: false, entry: remote }]);
+  assert.equal(newer.state.entries[0].notes, 'Remote');
+
+  const latestLocal = entry({ updatedAt: '2026-09-13T13:00:00Z', notes: 'Latest local' });
+  const olderRemote = S.reconcileEntries(state([latestLocal]), [{ kind: 'entry', id: remote.id,
+    modifiedAt: remote.updatedAt, deleted: false, entry: remote }]);
+  assert.equal(olderRemote.state.entries[0].notes, 'Latest local');
+  assert.equal(olderRemote.uploads[0].entry.notes, 'Latest local');
+});
+
+test('sync applies deletions unless an entry has a newer edit', () => {
+  const local = entry({ updatedAt: '2026-09-13T11:00:00Z' });
+  const deleted = S.reconcileEntries(state([local]), [{ kind: 'entry', id: local.id,
+    modifiedAt: '2026-09-13T12:00:00Z', deleted: true }]);
+  assert.equal(deleted.state.entries.length, 0);
+  assert.deepEqual(deleted.state.deletedIds, [local.id]);
+
+  const newerLocal = entry({ updatedAt: '2026-09-13T13:00:00Z' });
+  const retained = S.reconcileEntries(state([newerLocal]), [{ kind: 'entry', id: newerLocal.id,
+    modifiedAt: '2026-09-13T12:00:00Z', deleted: true }]);
+  assert.equal(retained.state.entries.length, 1);
+  assert.equal(retained.uploads[0].deleted, false);
+});
+
+test('sync collapses duplicate timestamps and keeps the newest or richer entry', () => {
+  const sparse = entry({ id: 'sparse', at: '2026-09-15T10:00:00Z', updatedAt: null,
+    notes: '', symptoms: [], triggers: [] });
+  const rich = entry({ id: 'rich', at: sparse.at, updatedAt: null,
+    notes: 'More detail', symptoms: [{ name: 'Headache', intensity: 8 }] });
+  assert.deepEqual(S.dedupeEntries([sparse, rich]).map(item => item.id), ['rich']);
+
+  const edited = entry({ id: 'edited', at: sparse.at, updatedAt: '2026-09-16T10:00:00Z', notes: '' });
+  assert.deepEqual(S.dedupeEntries([rich, edited]).map(item => item.id), ['edited']);
 });
