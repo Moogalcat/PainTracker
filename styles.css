@@ -151,14 +151,17 @@ h1 {
 }
 .entry-top .entry-head { flex: 1 1 auto; min-width: 0; }
 .repeat-entry {
-  width: 50px;
-  flex: 0 0 50px;
+  width: 70px;
+  flex: 0 0 70px;
   margin: 12px 9px 12px 0;
   border: 1px solid transparent;
   border-radius: 8px;
   background: transparent;
   color: var(--text-dim);
-  font-size: 1.35rem;
+  font-size: .78rem;
+  font-weight: 750;
+  letter-spacing: .02em;
+  white-space: nowrap;
   cursor: pointer;
 }
 .repeat-entry:hover { border-color: var(--line); background: var(--surface-2); color: var(--accent); }
@@ -354,7 +357,7 @@ summary { padding: 16px 0; color: var(--text-dim); font-size: .92rem; font-weigh
   .rating-row { padding-inline: 9px; }
   .custom-add { grid-template-columns: 1fr auto; }
   .custom-add .btn-ghost { grid-column: 1 / -1; }
-  .repeat-entry { width: 44px; flex-basis: 44px; margin-right: 5px; }
+  .repeat-entry { width: 66px; flex-basis: 66px; margin-right: 5px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
