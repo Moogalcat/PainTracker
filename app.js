@@ -1234,10 +1234,18 @@ function scheduleReminder() {
 }
 
 function renderBackupStatus() {
-  const meta = readJSON(META_KEY, { pending: 0 });
+  const meta = readJSON(META_KEY, { pending: 0, lastExportAt: null });
   const count = Math.max(0, Number(meta.pending) || 0);
   const status = $('backupStatus');
-  status.textContent = count ? ` · ${count} ${count === 1 ? 'change' : 'changes'} since export` : '';
+  const hasAnythingToBackUp = count > 0 || entries.length > 0
+    || state.customSymptoms.length > 0 || state.customCharacteristics.length > 0
+    || state.customRelief.length > 0 || state.customTriggers.length > 0;
+  if (!meta.lastExportAt) {
+    status.textContent = hasAnythingToBackUp ? ' · Not backed up yet' : '';
+    status.classList.toggle('stale', hasAnythingToBackUp);
+    return;
+  }
+  status.textContent = count ? ` · ${count} ${count === 1 ? 'change' : 'changes'} since backup` : '';
   status.classList.toggle('stale', count > 0);
 }
 
