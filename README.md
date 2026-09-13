@@ -8,6 +8,7 @@ A small, private, installable pain diary inspired by the companion Migraine Log 
 - Built-in symptom chips for stomach-ache, headache, nausea, and dizziness
 - Custom symptom chips
 - A tappable 1–10 intensity scale for every selected symptom
+- Common and custom pain-characteristic chips
 - User-defined possible triggers
 - Notes, history, six-month activity charts, statistics, light/dark themes, JSON backup and restore
 - Offline support through a service worker

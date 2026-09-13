@@ -8,6 +8,10 @@ if (window.navigator && window.navigator.standalone === true && document.documen
 const KEY = 'pain-tracker-v1';
 const META_KEY = 'pain-tracker-meta-v1';
 const BUILT_IN_SYMPTOMS = ['Stomach-ache', 'Headache', 'Nausea', 'Dizziness'];
+const BUILT_IN_CHARACTERISTICS = [
+  'Sharp', 'Dull', 'Aching', 'Burning', 'Throbbing',
+  'Cramping', 'Pressure', 'Tingling', 'Radiating',
+];
 const MAX_CUSTOM_ITEMS = 12;
 const INITIAL_VISIBLE = 6;
 const HISTORY_BATCH = 12;
@@ -49,6 +53,7 @@ function loadState() {
       version: 1,
       entries: loaded.entries,
       customSymptoms: loaded.customSymptoms,
+      customCharacteristics: loaded.customCharacteristics,
       customTriggers: loaded.customTriggers,
       preferences: loaded.preferences,
       deletedIds: loaded.deletedIds,
@@ -71,6 +76,7 @@ function persistState(next, recovering = false) {
       version: 1,
       entries: [...next.entries].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
       customSymptoms: next.customSymptoms,
+      customCharacteristics: next.customCharacteristics,
       customTriggers: next.customTriggers,
       preferences: next.preferences,
       deletedIds: next.deletedIds,
@@ -174,6 +180,9 @@ function renderEntrySummary(card, entry) {
       meta.append(label);
     });
   } else meta.textContent = 'No symptoms rated';
+  const characteristics = card.querySelector('.entry-characteristics');
+  characteristics.textContent = entry.characteristics.join(' · ');
+  characteristics.hidden = !entry.characteristics.length;
   const notes = card.querySelector('.entry-notes');
   notes.textContent = entry.notes;
   notes.hidden = !entry.notes;
@@ -184,11 +193,16 @@ function fillEditor(card, entry) {
   card.querySelector('[data-field="notes"]').value = entry.notes;
   renderSymptomChips(card.querySelector('[data-chips="symptoms"]'), entry.symptoms);
   renderRatings(card.querySelector('[data-ratings]'), entry.symptoms);
+  renderCharacteristicChips(card.querySelector('[data-chips="characteristics"]'), entry.characteristics);
   renderTriggerChips(card.querySelector('[data-chips="triggers"]'), entry.triggers);
 }
 
 function allSymptoms() {
   return [...BUILT_IN_SYMPTOMS, ...state.customSymptoms];
+}
+
+function allCharacteristics() {
+  return [...BUILT_IN_CHARACTERISTICS, ...state.customCharacteristics];
 }
 
 function selectedNames(card) {
@@ -234,6 +248,16 @@ function renderSymptomChips(container, symptoms) {
     container.append(makeChip(label, selected.has(label.toLocaleLowerCase()), state.customSymptoms.includes(label)));
   }
   container.append(addChip('symptom'));
+}
+
+function renderCharacteristicChips(container, characteristics) {
+  const selected = new Set(characteristics.map(item => item.toLocaleLowerCase()));
+  const options = PainData.uniqueLabels([...allCharacteristics(), ...characteristics]);
+  container.replaceChildren();
+  for (const label of options) {
+    container.append(makeChip(label, selected.has(label.toLocaleLowerCase()), state.customCharacteristics.includes(label)));
+  }
+  container.append(addChip('characteristic'));
 }
 
 function renderTriggerChips(container, triggers) {
@@ -296,6 +320,10 @@ function readTriggers(card) {
   return [...card.querySelectorAll('[data-chips="triggers"] .chip.on')].map(button => button.dataset.value);
 }
 
+function readCharacteristics(card) {
+  return [...card.querySelectorAll('[data-chips="characteristics"] .chip.on')].map(button => button.dataset.value);
+}
+
 function showCardError(card, message) {
   const error = card.querySelector('.entry-error');
   error.textContent = message;
@@ -308,7 +336,8 @@ function handleChipClick(event, card) {
 
   const remove = event.target.closest('[data-remove]');
   if (remove) {
-    const type = remove.closest('[data-chips]').dataset.chips === 'symptoms' ? 'symptom' : 'trigger';
+    const type = { symptoms: 'symptom', characteristics: 'characteristic', triggers: 'trigger' }
+      [remove.closest('[data-chips]').dataset.chips];
     removeCustom(type, remove.dataset.remove);
     return;
   }
@@ -337,7 +366,8 @@ function showCustomForm(type, card, container) {
   const input = document.createElement('input');
   input.type = 'text';
   input.maxLength = 40;
-  input.placeholder = type === 'symptom' ? 'Symptom name' : 'Possible trigger';
+  input.placeholder = type === 'symptom' ? 'Symptom name'
+    : type === 'characteristic' ? 'Pain characteristic' : 'Possible trigger';
   input.setAttribute('aria-label', input.placeholder);
   const save = document.createElement('button');
   save.type = 'button'; save.className = 'btn btn-primary btn-sm'; save.dataset.customAction = 'add'; save.textContent = 'Add';
@@ -353,8 +383,9 @@ function addCustom(type, card, rawValue) {
   if (!value) { showCardError(card, `Enter a ${type} name first.`); return; }
   if (value.length > 40) { showCardError(card, 'Please use a name of 40 characters or fewer.'); return; }
 
-  const field = type === 'symptom' ? 'customSymptoms' : 'customTriggers';
-  const existing = type === 'symptom' ? allSymptoms() : state.customTriggers;
+  const field = { symptom: 'customSymptoms', characteristic: 'customCharacteristics', trigger: 'customTriggers' }[type];
+  const existing = type === 'symptom' ? allSymptoms()
+    : type === 'characteristic' ? allCharacteristics() : state.customTriggers;
   const match = existing.find(item => item.toLocaleLowerCase() === value.toLocaleLowerCase());
   if (!match && state[field].length >= MAX_CUSTOM_ITEMS) {
     showCardError(card, `You can keep up to ${MAX_CUSTOM_ITEMS} custom ${type}s.`);
@@ -369,7 +400,8 @@ function addCustom(type, card, rawValue) {
   refreshAllChipLists();
 
   const current = list.querySelector(`[data-id="${CSS.escape(card.dataset.id)}"]`);
-  const currentChip = [...current.querySelectorAll(`[data-chips="${type === 'symptom' ? 'symptoms' : 'triggers'}"] .chip[data-value]`)]
+  const chipGroup = { symptom: 'symptoms', characteristic: 'characteristics', trigger: 'triggers' }[type];
+  const currentChip = [...current.querySelectorAll(`[data-chips="${chipGroup}"] .chip[data-value]`)]
     .find(button => button.dataset.value === label);
   if (currentChip && !currentChip.classList.contains('on')) currentChip.click();
   showCardError(current, '');
@@ -377,7 +409,7 @@ function addCustom(type, card, rawValue) {
 
 function removeCustom(type, label) {
   if (!window.confirm(`Remove “${label}” from your ${type} list? Existing saved entries will keep it.`)) return;
-  const field = type === 'symptom' ? 'customSymptoms' : 'customTriggers';
+  const field = { symptom: 'customSymptoms', characteristic: 'customCharacteristics', trigger: 'customTriggers' }[type];
   if (!persistState({ ...state, [field]: state[field].filter(item => item !== label) })) return;
   if (type === 'symptom') {
     for (const row of list.querySelectorAll('.rating-row')) {
@@ -395,8 +427,10 @@ function refreshAllChipLists() {
       name: row.dataset.symptom,
       intensity: Number(row.dataset.intensity) || null,
     }));
+    const selectedCharacteristics = readCharacteristics(card);
     const selectedTriggers = readTriggers(card);
     renderSymptomChips(card.querySelector('[data-chips="symptoms"]'), selectedSymptoms);
+    renderCharacteristicChips(card.querySelector('[data-chips="characteristics"]'), selectedCharacteristics);
     renderTriggerChips(card.querySelector('[data-chips="triggers"]'), selectedTriggers);
   }
 }
@@ -434,6 +468,7 @@ function saveEntry(card) {
     at: date.toISOString(),
     updatedAt: new Date().toISOString(),
     symptoms,
+    characteristics: readCharacteristics(card),
     triggers: readTriggers(card),
     notes: card.querySelector('[data-field="notes"]').value.trim(),
   });
@@ -471,7 +506,7 @@ function deleteEntry(card) {
 
 function addEntry() {
   const now = new Date();
-  const entry = PainData.normalise({ id: PainData.uid(), at: now.toISOString(), updatedAt: now.toISOString(), symptoms: [], triggers: [], notes: '' });
+  const entry = PainData.normalise({ id: PainData.uid(), at: now.toISOString(), updatedAt: now.toISOString(), symptoms: [], characteristics: [], triggers: [], notes: '' });
   if (!persistEntries([entry, ...entries])) return;
   freshEntryIds.add(entry.id);
   openOnRender = entry.id;
@@ -597,6 +632,18 @@ function renderStats() {
     });
   }
   stats.append(symptomBlock);
+
+  const characteristicCounts = new Map();
+  for (const entry of rows) for (const characteristic of entry.characteristics) {
+    characteristicCounts.set(characteristic, (characteristicCounts.get(characteristic) || 0) + 1);
+  }
+  if (characteristicCounts.size) {
+    const characteristicBlock = statBlock('Pain characteristics');
+    const peak = Math.max(...characteristicCounts.values());
+    [...characteristicCounts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .forEach(([name, count]) => characteristicBlock.append(statRow(name, count, count / peak)));
+    stats.append(characteristicBlock);
+  }
 
   const triggerCounts = new Map();
   for (const entry of rows) for (const trigger of entry.triggers) triggerCounts.set(trigger, (triggerCounts.get(trigger) || 0) + 1);

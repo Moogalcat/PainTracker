@@ -22,6 +22,8 @@ const PainData = (() => {
     return !!entry && typeof entry === 'object' && isDate(entry.at)
       && (entry.updatedAt == null || isDate(entry.updatedAt))
       && (entry.notes == null || typeof entry.notes === 'string')
+      && (entry.characteristics == null || (Array.isArray(entry.characteristics)
+        && entry.characteristics.every(value => typeof value === 'string' && value.trim())))
       && (entry.triggers == null || (Array.isArray(entry.triggers)
         && entry.triggers.every(value => typeof value === 'string' && value.trim())))
       && (entry.symptoms == null || (Array.isArray(entry.symptoms)
@@ -44,6 +46,7 @@ const PainData = (() => {
       updatedAt: isDate(entry.updatedAt) ? new Date(entry.updatedAt).toISOString() : null,
       notes: entry.notes || '',
       symptoms: [...symptomMap.values()],
+      characteristics: uniqueLabels(entry.characteristics),
       triggers: uniqueLabels(entry.triggers),
     };
   }
@@ -53,6 +56,7 @@ const PainData = (() => {
       .map(item => [item.name.toLocaleLowerCase(), item.intensity])
       .sort((a, b) => a[0].localeCompare(b[0]));
     return JSON.stringify([entry.at, symptoms,
+      entry.characteristics.map(value => value.toLocaleLowerCase()).sort(),
       entry.triggers.map(value => value.toLocaleLowerCase()).sort(), entry.notes]);
   }
 
@@ -61,6 +65,7 @@ const PainData = (() => {
       version: 1,
       entries: [],
       customSymptoms: [],
+      customCharacteristics: [],
       customTriggers: [],
       preferences: { theme: 'system' },
       deletedIds: [],
@@ -71,7 +76,7 @@ const PainData = (() => {
     const object = Array.isArray(value) ? { entries: value } : value;
     if (!object || !Array.isArray(object.entries)) throw new Error('No entry list found');
     if (object.version != null && object.version !== 1) throw new Error('Unsupported backup version');
-    for (const key of ['customSymptoms', 'customTriggers']) {
+    for (const key of ['customSymptoms', 'customCharacteristics', 'customTriggers']) {
       if (object[key] != null && (!Array.isArray(object[key])
         || !object[key].every(item => typeof item === 'string' && item.trim()))) {
         throw new Error(`Invalid ${key}`);
@@ -95,6 +100,7 @@ const PainData = (() => {
       entries,
       invalid,
       customSymptoms: uniqueLabels(object.customSymptoms),
+      customCharacteristics: uniqueLabels(object.customCharacteristics),
       customTriggers: uniqueLabels(object.customTriggers),
       preferences: object.preferences || { theme: 'system' },
       deletedIds: [...new Set(object.deletedIds || [])],
@@ -130,6 +136,7 @@ const PainData = (() => {
         version: 1,
         entries: [...byId.values()],
         customSymptoms: uniqueLabels([...current.customSymptoms, ...incoming.customSymptoms]),
+        customCharacteristics: uniqueLabels([...current.customCharacteristics, ...incoming.customCharacteristics]),
         customTriggers: uniqueLabels([...current.customTriggers, ...incoming.customTriggers]),
         preferences: incoming.hasPreferences ? incoming.preferences : current.preferences,
         deletedIds: [...deleted],

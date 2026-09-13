@@ -150,7 +150,7 @@ h1 {
 }
 .entry-head-main { min-width: 0; display: grid; gap: 4px; }
 .entry-when { font-family: Georgia, "Times New Roman", serif; font-size: 1.18rem; }
-.entry-meta, .entry-notes {
+.entry-meta, .entry-characteristics, .entry-notes {
   display: block;
   overflow: hidden;
   color: var(--text-dim);
@@ -159,6 +159,7 @@ h1 {
   white-space: nowrap;
 }
 .entry-meta strong { color: var(--accent); font-weight: 750; }
+.entry-characteristics { color: var(--accent); }
 .entry-notes { font-style: italic; }
 .chev { width: 20px; flex: 0 0 auto; fill: none; stroke: var(--text-dim); stroke-width: 2; transition: transform .2s ease; }
 .entry.open .chev { transform: rotate(180deg); }

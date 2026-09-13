@@ -16,8 +16,9 @@ test('normalise keeps valid symptom ratings and removes case-insensitive duplica
     { name: ' Headache ', intensity: 4 },
     { name: 'headache', intensity: 8 },
     { name: 'Nausea', intensity: 11 },
-  ], triggers: [' Stress ', 'stress'] });
+  ], characteristics: [' Sharp ', 'sharp'], triggers: [' Stress ', 'stress'] });
   assert.deepEqual(result.symptoms, [{ name: 'headache', intensity: 8 }]);
+  assert.deepEqual(result.characteristics, ['Sharp']);
   assert.deepEqual(result.triggers, ['Stress']);
 });
 
@@ -35,11 +36,19 @@ test('strict reading rejects corrupt records and repeated IDs', () => {
 });
 
 test('backup round trip retains custom items and preferences', () => {
-  const original = { ...state([entry()]), customSymptoms: ['Jaw pain'], customTriggers: ['Stress'], preferences: { theme: 'dark' } };
+  const original = { ...state([entry({ characteristics: ['Throbbing'] })]), customSymptoms: ['Jaw pain'],
+    customCharacteristics: ['Heavy'], customTriggers: ['Stress'], preferences: { theme: 'dark' } };
   const restored = D.parse(JSON.parse(JSON.stringify(original)), true);
   assert.deepEqual(restored.entries[0].symptoms, [{ name: 'Headache', intensity: 7 }]);
+  assert.deepEqual(restored.entries[0].characteristics, ['Throbbing']);
   assert.deepEqual(restored.customSymptoms, ['Jaw pain']);
+  assert.deepEqual(restored.customCharacteristics, ['Heavy']);
   assert.equal(restored.preferences.theme, 'dark');
+});
+
+test('older entries without pain characteristics migrate to an empty selection', () => {
+  const restored = D.parse([{ id: 'old', at, symptoms: [], triggers: [], notes: '' }], true);
+  assert.deepEqual(restored.entries[0].characteristics, []);
 });
 
 test('a newer copy of an entry updates once and repeated import is idempotent', () => {
