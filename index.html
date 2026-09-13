@@ -97,33 +97,36 @@
       </select>
       <p class="note">Reminders are shown while the site or installed app is open. Overdue entries are highlighted the next time you open it.</p>
     </details>
-    <details class="system-feature">
-      <summary>Appearance</summary>
-      <label for="theme">Colour theme</label>
-      <select id="theme">
-        <option value="system">System</option>
-        <option value="light">Light</option>
-        <option value="dark">Dark</option>
-      </select>
-    </details>
-    <details class="browser-only system-feature">
-      <summary>Install this app</summary>
-      <ul class="install-steps">
-        <li><strong>Edge or Chrome on a computer:</strong> open the browser menu, choose <strong>Apps</strong>, then <strong>Install this site as an app</strong>.</li>
-        <li><strong>Android:</strong> open the site in Chrome, then choose <strong>Install app</strong> or <strong>Add to Home screen</strong> from the menu.</li>
-        <li><strong>iPhone or iPad:</strong> open the site in Safari, tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</li>
-      </ul>
-    </details>
-    <details class="system-feature">
-      <summary>Backup &amp; data<span class="panel-status" id="backupStatus"></span></summary>
-      <p class="note">Entries stay only on this device, in this browser. Nothing is uploaded. Export a backup occasionally so you do not lose your history.</p>
-      <div class="row">
-        <button type="button" class="btn btn-ghost btn-sm" id="exportBtn">Export backup</button>
-        <button type="button" class="btn btn-ghost btn-sm" id="importBtn">Import backup</button>
-        <input type="file" id="importFile" accept="application/json,.json" hidden>
-      </div>
-      <p id="importResult" class="notice" role="status" hidden></p>
-    </details>
+    <section class="system-features" aria-labelledby="systemFeaturesHeading">
+      <h2 class="system-features-heading" id="systemFeaturesHeading">App settings &amp; data</h2>
+      <details class="system-feature">
+        <summary>Appearance</summary>
+        <label for="theme">Colour theme</label>
+        <select id="theme">
+          <option value="system">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+      </details>
+      <details class="browser-only system-feature">
+        <summary>Install this app</summary>
+        <ul class="install-steps">
+          <li><strong>Edge or Chrome on a computer:</strong> open the browser menu, choose <strong>Apps</strong>, then <strong>Install this site as an app</strong>.</li>
+          <li><strong>Android:</strong> open the site in Chrome, then choose <strong>Install app</strong> or <strong>Add to Home screen</strong> from the menu.</li>
+          <li><strong>iPhone or iPad:</strong> open the site in Safari, tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</li>
+        </ul>
+      </details>
+      <details class="system-feature">
+        <summary>Backup &amp; data<span class="panel-status" id="backupStatus"></span></summary>
+        <p class="note">Entries stay only on this device, in this browser. Nothing is uploaded. Export a backup occasionally so you do not lose your history.</p>
+        <div class="row">
+          <button type="button" class="btn btn-ghost btn-sm" id="exportBtn">Export backup</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="importBtn">Import backup</button>
+          <input type="file" id="importFile" accept="application/json,.json" hidden>
+        </div>
+        <p id="importResult" class="notice" role="status" hidden></p>
+      </details>
+    </section>
   </footer>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
