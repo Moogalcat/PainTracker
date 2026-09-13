@@ -5,6 +5,7 @@
   --surface-2: #dfeaed;
   --text: #203038;
   --text-dim: #657780;
+  --system-text: #637176;
   --line: #d2e0e4;
   --line-strong: #a6bac1;
   --accent: #347687;
@@ -24,6 +25,7 @@
   --surface-2: #263238;
   --text: #e8f0f2;
   --text-dim: #9aabb1;
+  --system-text: #829197;
   --line: #344348;
   --line-strong: #52666d;
   --accent: #64b5c7;
@@ -42,6 +44,7 @@
     --surface-2: #263238;
     --text: #e8f0f2;
     --text-dim: #9aabb1;
+    --system-text: #829197;
     --line: #344348;
     --line-strong: #52666d;
     --accent: #64b5c7;
@@ -316,7 +319,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .footer { margin-top: 30px; }
 .footer details { padding-bottom: 8px; border-top: 1px solid var(--line); }
 summary { padding: 16px 0; color: var(--text-dim); font-size: .92rem; font-weight: 700; cursor: pointer; }
-.system-feature > summary { font-weight: 500; }
+.system-feature > summary { color: var(--system-text); font-weight: 500; }
+.system-feature > summary .panel-status { color: inherit; font-weight: inherit; }
 .panel-status { font-weight: 450; }
 .panel-status.stale { color: var(--accent); font-weight: 700; }
 .note { max-width: 34rem; color: var(--text-dim); font-size: .87rem; line-height: 1.6; }
