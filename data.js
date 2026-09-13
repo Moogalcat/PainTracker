@@ -2,9 +2,11 @@
 'use strict';
 
 const PainData = (() => {
+  const backupVersion = 2;
   const themes = ['system', 'light', 'dark'];
   const reliefLevels = ['None', 'Some', 'Strong'];
   const reminderMinutes = [0, 30, 60, 120, 240, 480, 960];
+  const unknownMedicationName = 'Medication (name not recorded)';
   const isDate = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
   const uid = () => globalThis.crypto?.randomUUID?.()
     || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
@@ -64,9 +66,10 @@ const PainData = (() => {
     }
     const medications = (entry.medications || [])
       .filter(item => item && reliefLevels.includes(item.effectiveness))
-      .map(item => ({ name: String(item.name ?? '').trim(), dose: String(item.dose ?? '').trim(), effectiveness: item.effectiveness }));
-    // Entries from before medication details keep their overall Medication rating as one unnamed medication.
-    if (!medications.length && legacyMedication) medications.push({ name: '', dose: '', effectiveness: legacyMedication });
+      .map(item => ({ name: String(item.name ?? '').trim() || unknownMedicationName,
+        dose: String(item.dose ?? '').trim(), effectiveness: item.effectiveness }));
+    // Entries from before medication details keep their overall rating with an explicit fallback label.
+    if (!medications.length && legacyMedication) medications.push({ name: unknownMedicationName, dose: '', effectiveness: legacyMedication });
     const knownCauses = uniqueLabels(entry.knownCauses);
     const causeKeys = new Set(knownCauses.map(value => value.toLocaleLowerCase()));
     const ongoing = entry.ongoing === true;
@@ -105,7 +108,7 @@ const PainData = (() => {
 
   function empty() {
     return {
-      version: 1,
+      version: backupVersion,
       entries: [],
       customSymptoms: [],
       customCharacteristics: [],
@@ -119,7 +122,7 @@ const PainData = (() => {
   function parse(value, strict = false) {
     const object = Array.isArray(value) ? { entries: value } : value;
     if (!object || !Array.isArray(object.entries)) throw new Error('No entry list found');
-    if (object.version != null && object.version !== 1) throw new Error('Unsupported backup version');
+    if (object.version != null && ![1, backupVersion].includes(object.version)) throw new Error('Unsupported backup version');
     for (const key of ['customSymptoms', 'customCharacteristics', 'customRelief', 'customTriggers']) {
       if (object[key] != null && (!Array.isArray(object[key])
         || !object[key].every(item => typeof item === 'string' && item.trim()))) {
@@ -184,7 +187,7 @@ const PainData = (() => {
     for (const id of incoming.deletedIds) if (!byId.has(id)) deleted.add(id);
     return {
       state: {
-        version: 1,
+        version: backupVersion,
         entries: [...byId.values()],
         customSymptoms: uniqueLabels([...current.customSymptoms, ...incoming.customSymptoms]),
         customCharacteristics: uniqueLabels([...current.customCharacteristics, ...incoming.customCharacteristics]),
@@ -210,7 +213,12 @@ const PainData = (() => {
     return date;
   }
 
-  return { themes, reliefLevels, reminderMinutes, uid, uniqueLabels, valid, normalise, contentKey, empty, parse, merge, toInput, fromInput };
+  function endState(entry) {
+    return entry.ongoing ? 'ongoing' : entry.endedAt ? 'ended' : 'unknown';
+  }
+
+  return { backupVersion, themes, reliefLevels, reminderMinutes, unknownMedicationName,
+    uid, uniqueLabels, valid, normalise, contentKey, empty, parse, merge, toInput, fromInput, endState };
 })();
 
 if (typeof module !== 'undefined') module.exports = PainData;

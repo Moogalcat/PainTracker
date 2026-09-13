@@ -34,7 +34,19 @@ test('validation accepts 0 and rejects intensity outside 0–10', () => {
 test('strict reading rejects corrupt records and repeated IDs', () => {
   assert.throws(() => D.parse({ entries: [entry(), { at: 'bad' }] }, true));
   assert.throws(() => D.parse({ entries: [entry(), entry()] }, true));
-  assert.throws(() => D.parse({ version: 2, entries: [] }, true));
+  assert.throws(() => D.parse({ version: 3, entries: [] }, true));
+});
+
+test('backup version 2 protects new fields while version 1 remains readable', () => {
+  assert.equal(D.empty().version, 2);
+  const migrated = D.parse({ version: 1, entries: [entry({
+    medications: [{ name: 'Ibuprofen', dose: '400 mg', effectiveness: 'Strong' }],
+    knownCauses: ['Dental work'],
+  })] }, true);
+  assert.equal(migrated.version, 2);
+  assert.equal(migrated.entries[0].medications[0].name, 'Ibuprofen');
+  assert.deepEqual(migrated.entries[0].knownCauses, ['Dental work']);
+  assert.equal(D.parse({ version: 2, entries: [] }, true).version, 2);
 });
 
 test('backup round trip retains custom items and preferences', () => {
@@ -72,6 +84,9 @@ test('duration, activity impact, and relief effectiveness are validated', () => 
   assert.equal(D.valid({ ...complete, relief: [{ name: 'Rest', effectiveness: 'A lot' }] }), false);
   const ongoing = D.normalise({ ...complete, ongoing: true });
   assert.equal(ongoing.endedAt, null);
+  assert.equal(D.endState(ongoing), 'ongoing');
+  assert.equal(D.endState(D.normalise(complete)), 'ended');
+  assert.equal(D.endState(D.normalise({ at })), 'unknown');
 });
 
 test('invalid reminder preferences are rejected and old preferences default to off', () => {
@@ -117,7 +132,9 @@ test('medications keep name, dose, and rating, and older Medication ratings migr
 
   const legacy = D.normalise({ at, relief: [{ name: 'Medication', effectiveness: 'Some' }, { name: 'Rest', effectiveness: 'None' }] });
   assert.deepEqual(legacy.relief, [{ name: 'Rest', effectiveness: 'None' }]);
-  assert.deepEqual(legacy.medications, [{ name: '', dose: '', effectiveness: 'Some' }]);
+  assert.deepEqual(legacy.medications, [{ name: D.unknownMedicationName, dose: '', effectiveness: 'Some' }]);
+  assert.deepEqual(D.normalise({ at, medications: [{ name: '', dose: '', effectiveness: 'None' }] }).medications,
+    [{ name: D.unknownMedicationName, dose: '', effectiveness: 'None' }]);
   assert.equal(D.contentKey(legacy), D.contentKey(D.normalise(legacy)));
   assert.notEqual(D.contentKey(entry({ medications })),
     D.contentKey(entry({ medications: [{ ...medications[0], dose: '200 mg' }, medications[1]] })));

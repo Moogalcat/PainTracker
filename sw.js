@@ -1,5 +1,5 @@
 /* Offline app shell. Bump CACHE whenever a shell file changes. */
-const CACHE = 'pain-tracker-v16';
+const CACHE = 'pain-tracker-v17';
 const SHELL = ['.', 'index.html', 'styles.css', 'app.js', 'data.js', 'manifest.webmanifest', 'icon.svg'];
 
 self.addEventListener('install', event => {

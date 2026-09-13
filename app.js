@@ -56,7 +56,7 @@ function loadState() {
     loaded.entries.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
     storageBlocked = false;
     return {
-      version: 1,
+      version: PainData.backupVersion,
       entries: loaded.entries,
       customSymptoms: loaded.customSymptoms,
       customCharacteristics: loaded.customCharacteristics,
@@ -80,7 +80,7 @@ function persistState(next, recovering = false) {
       return false;
     }
     const saved = {
-      version: 1,
+      version: PainData.backupVersion,
       entries: [...next.entries].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
       customSymptoms: next.customSymptoms,
       customCharacteristics: next.customCharacteristics,
@@ -209,7 +209,8 @@ function renderEntrySummary(card, entry) {
   characteristics.textContent = entry.characteristics.join(' · ');
   characteristics.hidden = !entry.characteristics.length;
   const duration = card.querySelector('.entry-duration');
-  duration.textContent = entry.ongoing ? 'Ongoing' : entry.endedAt ? `Duration ${durationText(entry.at, entry.endedAt)}` : '';
+  duration.textContent = entry.ongoing ? 'Ongoing'
+    : entry.endedAt ? `Ended · Duration ${durationText(entry.at, entry.endedAt)}` : 'Ended · time unknown';
   duration.hidden = !duration.textContent;
   const impact = card.querySelector('.entry-impact');
   impact.textContent = entry.impact == null ? '' : `Impact: ${IMPACT_LABELS[entry.impact]}`;
@@ -235,7 +236,7 @@ function renderEntrySummary(card, entry) {
 
 function fillEditor(card, entry) {
   card.querySelector('[data-field="at"]').value = PainData.toInput(new Date(entry.at));
-  const endState = entry.ongoing ? 'ongoing' : entry.endedAt ? 'ended' : 'unknown';
+  const endState = PainData.endState(entry);
   for (const radio of card.querySelectorAll('[data-field="endState"]')) {
     radio.name = `end-${entry.id}`;
     radio.checked = radio.value === endState;
@@ -511,11 +512,12 @@ function removeMedication(card, row) {
 }
 
 function medicationLabel(item) {
-  return `${item.name || 'Unnamed'}${item.dose ? ` ${item.dose}` : ''}`;
+  return `${item.name || PainData.unknownMedicationName}${item.dose ? ` ${item.dose}` : ''}`;
 }
 
 function renderMedicationNames() {
-  const names = PainData.uniqueLabels(entries.flatMap(entry => entry.medications.map(item => item.name)));
+  const names = PainData.uniqueLabels(entries.flatMap(entry => entry.medications.map(item => item.name)))
+    .filter(name => name !== PainData.unknownMedicationName);
   $('medicationNames').replaceChildren(...names.map(name => new Option('', name)));
 }
 
@@ -697,21 +699,6 @@ function removeCustom(type, label) {
   if (!window.confirm(`Remove “${label}” from your ${type} list? Existing saved entries will keep it.`)) return;
   const field = { symptom: 'customSymptoms', characteristic: 'customCharacteristics', relief: 'customRelief', trigger: 'customTriggers' }[type];
   if (!persistState({ ...state, [field]: state[field].filter(item => item !== label) })) return;
-  if (type === 'symptom') {
-    for (const row of list.querySelectorAll('.rating-row[data-symptom]')) {
-      if (row.dataset.symptom === label) row.remove();
-    }
-  }
-  if (type === 'relief') {
-    for (const row of list.querySelectorAll('[data-relief-ratings] [data-relief]')) {
-      if (row.dataset.relief === label) row.remove();
-    }
-  }
-  if (type === 'trigger') {
-    for (const row of list.querySelectorAll('[data-trigger-choices] [data-trigger]')) {
-      if (row.dataset.trigger === label) row.remove();
-    }
-  }
   refreshAllChipLists();
   markChanged();
   toast(`${label} removed from your list`);
@@ -807,6 +794,10 @@ function saveEntry(card) {
     return;
   }
   const medications = readMedications(card);
+  if (medications.some(item => !item.name)) {
+    showCardError(card, 'Enter a name for every medication.');
+    return;
+  }
   if (medications.some(item => !item.effectiveness)) {
     showCardError(card, 'Choose how much every medication helped.');
     return;
@@ -1080,7 +1071,7 @@ function renderStats() {
   }
 
   appendHelpBlock(stats, 'Medication · average help',
-    rows.flatMap(entry => entry.medications.map(item => [item.name || 'Unnamed', item.effectiveness])));
+    rows.flatMap(entry => entry.medications.map(item => [item.name || PainData.unknownMedicationName, item.effectiveness])));
   appendHelpBlock(stats, 'Relief attempts · average help',
     rows.flatMap(entry => entry.relief.map(item => [item.name, item.effectiveness])));
 
@@ -1112,7 +1103,9 @@ function reportPeriodLabel() {
 
 function entryDetailLines(entry) {
   return [
-    entry.ongoing ? 'Duration: ongoing' : entry.endedAt ? `Duration: ${durationText(entry.at, entry.endedAt)} · ended ${describe(new Date(entry.endedAt))}` : '',
+    entry.ongoing ? 'Status: ongoing'
+      : entry.endedAt ? `Status: ended · Duration: ${durationText(entry.at, entry.endedAt)} · ended ${describe(new Date(entry.endedAt))}`
+        : 'Status: ended, time unknown',
     entry.symptoms.length ? `Symptoms: ${entry.symptoms.map(item => `${item.name} ${item.intensity}/10`).join(', ')}` : 'Symptoms: none recorded',
     entry.characteristics.length ? `Characteristics: ${entry.characteristics.join(', ')}` : '',
     entry.impact == null ? '' : `Activity impact: ${IMPACT_LABELS[entry.impact]}`,
@@ -1181,12 +1174,12 @@ function exportCsvReport() {
     return;
   }
   error.hidden = true;
-  const header = ['Start', 'End', 'Duration', 'Ongoing', 'Symptoms', 'Pain characteristics', 'Activity impact', 'Medication', 'Relief attempts', 'Known causes', 'Possible triggers', 'Notes'];
+  const header = ['Start', 'End', 'Duration', 'Status', 'Symptoms', 'Pain characteristics', 'Activity impact', 'Medication', 'Relief attempts', 'Known causes', 'Possible triggers', 'Notes'];
   const records = rows.map(entry => [
     entry.at,
     entry.endedAt || '',
     entry.endedAt ? durationText(entry.at, entry.endedAt) : '',
-    entry.ongoing ? 'Yes' : 'No',
+    entry.ongoing ? 'Ongoing' : entry.endedAt ? 'Ended' : 'Ended, time unknown',
     entry.symptoms.map(item => `${item.name} ${item.intensity}/10`).join('; '),
     entry.characteristics.join('; '),
     entry.impact == null ? '' : IMPACT_LABELS[entry.impact],
