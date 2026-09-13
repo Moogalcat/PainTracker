@@ -13,6 +13,7 @@ const BUILT_IN_CHARACTERISTICS = [
   'Cramping', 'Pressure', 'Tingling', 'Radiating',
 ];
 const BUILT_IN_RELIEF = ['Medication', 'Rest', 'Heat', 'Cold', 'Stretching', 'Hydration', 'Food', 'Movement'];
+const MEDICATION = 'Medication';
 const IMPACT_LABELS = ['No limitation', 'Slowed down', 'Stopped activities', 'Needed bed rest'];
 const MAX_CUSTOM_ITEMS = 12;
 const INITIAL_VISIBLE = 6;
@@ -184,6 +185,7 @@ function render() {
   $('logNow').disabled = storageBlocked;
   renderTally();
   renderStats();
+  renderMedicationNames();
   renderBackupStatus();
   renderReminderStatus();
   scheduleReminder();
@@ -212,10 +214,20 @@ function renderEntrySummary(card, entry) {
   const impact = card.querySelector('.entry-impact');
   impact.textContent = entry.impact == null ? '' : `Impact: ${IMPACT_LABELS[entry.impact]}`;
   impact.hidden = !impact.textContent;
+  const medication = card.querySelector('.entry-medication');
+  medication.textContent = entry.medications.length
+    ? `Medication: ${entry.medications.map(item => `${medicationLabel(item)} — ${item.effectiveness.toLowerCase()}`).join(' · ')}` : '';
+  medication.hidden = !medication.textContent;
   const relief = card.querySelector('.entry-relief');
   relief.textContent = entry.relief.length
     ? `Relief: ${entry.relief.map(item => `${item.name} — ${item.effectiveness.toLowerCase()}`).join(' · ')}` : '';
   relief.hidden = !relief.textContent;
+  const triggers = card.querySelector('.entry-triggers');
+  triggers.textContent = [
+    entry.knownCauses.length ? `Known causes: ${entry.knownCauses.join(', ')}` : '',
+    entry.triggers.length ? `Possible triggers: ${entry.triggers.join(', ')}` : '',
+  ].filter(Boolean).join(' · ');
+  triggers.hidden = !triggers.textContent;
   const notes = card.querySelector('.entry-notes');
   notes.textContent = entry.notes;
   notes.hidden = !entry.notes;
@@ -223,18 +235,35 @@ function renderEntrySummary(card, entry) {
 
 function fillEditor(card, entry) {
   card.querySelector('[data-field="at"]').value = PainData.toInput(new Date(entry.at));
-  const ongoing = card.querySelector('[data-field="ongoing"]');
-  ongoing.checked = entry.ongoing;
-  const ended = card.querySelector('[data-field="endedAt"]');
-  ended.value = entry.endedAt ? PainData.toInput(new Date(entry.endedAt)) : '';
+  const endState = entry.ongoing ? 'ongoing' : entry.endedAt ? 'ended' : 'unknown';
+  for (const radio of card.querySelectorAll('[data-field="endState"]')) {
+    radio.name = `end-${entry.id}`;
+    radio.checked = radio.value === endState;
+  }
+  card.querySelector('[data-field="endedAt"]').value = entry.endedAt ? PainData.toInput(new Date(entry.endedAt)) : '';
+  updateEndRow(card);
   card.querySelector('[data-field="notes"]').value = entry.notes;
   renderSymptomChips(card.querySelector('[data-chips="symptoms"]'), entry.symptoms);
   renderRatings(card.querySelector('[data-ratings]'), entry.symptoms);
   renderCharacteristicChips(card.querySelector('[data-chips="characteristics"]'), entry.characteristics);
   renderImpactChips(card.querySelector('[data-chips="impact"]'), entry.impact);
-  renderReliefChips(card.querySelector('[data-chips="relief"]'), entry.relief);
-  renderReliefRatings(card.querySelector('[data-relief-ratings]'), entry.relief);
-  renderTriggerChips(card.querySelector('[data-chips="triggers"]'), entry.triggers);
+  renderReliefChips(card.querySelector('[data-chips="relief"]'), entry.relief, entry.medications.length > 0);
+  renderReliefRatings(card.querySelector('[data-relief-ratings]'), entry.relief, entry.medications);
+  renderTriggerChips(card.querySelector('[data-chips="triggers"]'), [...entry.knownCauses, ...entry.triggers]);
+  renderTriggerChoices(card.querySelector('[data-trigger-choices]'), entry.triggers, entry.knownCauses);
+}
+
+function selectedEndState(card) {
+  return card.querySelector('[data-field="endState"]:checked')?.value || 'ongoing';
+}
+
+function updateEndRow(card) {
+  card.querySelector('[data-end-row]').hidden = selectedEndState(card) !== 'ended';
+}
+
+function endNow(card) {
+  card.querySelector('[data-field="endedAt"]').value = PainData.toInput(new Date());
+  showCardError(card, '');
 }
 
 function allSymptoms() {
@@ -309,8 +338,9 @@ function renderImpactChips(container, impact) {
   IMPACT_LABELS.forEach((label, index) => container.append(makeChip(label, impact === index, false)));
 }
 
-function renderReliefChips(container, relief) {
+function renderReliefChips(container, relief, medicationOn) {
   const selected = new Set(relief.map(item => item.name.toLocaleLowerCase()));
+  if (medicationOn) selected.add(MEDICATION.toLocaleLowerCase());
   const options = PainData.uniqueLabels([...allRelief(), ...relief.map(item => item.name)]);
   container.replaceChildren();
   for (const label of options) {
@@ -327,6 +357,37 @@ function renderTriggerChips(container, triggers) {
     container.append(makeChip(label, selected.has(label.toLocaleLowerCase()), state.customTriggers.includes(label)));
   }
   container.append(addChip('trigger'));
+}
+
+function renderTriggerChoices(container, triggers, knownCauses) {
+  container.replaceChildren();
+  for (const name of knownCauses) container.append(makeTriggerChoice(name, true));
+  for (const name of triggers) container.append(makeTriggerChoice(name, false));
+}
+
+function makeTriggerChoice(name, known = false) {
+  const row = document.createElement('div');
+  row.className = 'trigger-choice';
+  row.dataset.trigger = name;
+  row.dataset.known = String(known);
+  const label = document.createElement('span');
+  label.textContent = name;
+  const options = document.createElement('div');
+  options.className = 'relief-scale trigger-scale';
+  options.setAttribute('role', 'group');
+  options.setAttribute('aria-label', `Is ${name} a possible trigger or a known cause?`);
+  for (const [value, text] of [['false', 'Possible'], ['true', 'Known cause']]) {
+    const selected = value === String(known);
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.certainty = value;
+    button.className = selected ? 'on' : '';
+    button.setAttribute('aria-pressed', String(selected));
+    button.textContent = text;
+    options.append(button);
+  }
+  row.append(label, options);
+  return row;
 }
 
 function renderRatings(container, symptoms) {
@@ -369,8 +430,9 @@ function makeRatingRow(name, intensity = null) {
   return row;
 }
 
-function renderReliefRatings(container, relief) {
+function renderReliefRatings(container, relief, medications) {
   container.replaceChildren();
+  if (medications.length) container.append(makeMedicationPanel(medications));
   for (const item of relief) container.append(makeReliefRow(item.name, item.effectiveness));
 }
 
@@ -379,14 +441,92 @@ function makeReliefRow(name, effectiveness = null) {
   row.className = 'relief-row';
   row.dataset.relief = name;
   if (PainData.reliefLevels.includes(effectiveness)) row.dataset.effectiveness = effectiveness;
+  row.append(...makeHelpRating(name, name, effectiveness));
+  return row;
+}
 
+function makeMedicationPanel(medications) {
+  const panel = document.createElement('div');
+  panel.className = 'medication-panel';
+  panel.dataset.medicationPanel = '';
   const head = document.createElement('div');
   head.className = 'rating-head';
-  const label = document.createElement('span');
-  label.textContent = name;
+  head.textContent = MEDICATION;
+  const rows = document.createElement('div');
+  rows.className = 'medication-list';
+  for (const item of medications.length ? medications : [{}]) rows.append(makeMedicationRow(item));
+  const add = document.createElement('button');
+  add.type = 'button';
+  add.className = 'chip chip-add';
+  add.dataset.medAction = 'add';
+  add.textContent = '+ Add medication';
+  panel.append(head, rows, add);
+  return panel;
+}
+
+function makeMedicationRow({ name = '', dose = '', effectiveness = null } = {}) {
+  const row = document.createElement('div');
+  row.className = 'medication-row';
+  row.dataset.medication = '';
+  if (PainData.reliefLevels.includes(effectiveness)) row.dataset.effectiveness = effectiveness;
+
+  const fields = document.createElement('div');
+  fields.className = 'medication-fields';
+  for (const [field, value, placeholder, label, maxLength] of [
+    ['name', name, 'Name, e.g. Ibuprofen', 'Medication name', 60],
+    ['dose', dose, 'Dose, e.g. 400 mg', 'Dose', 30],
+  ]) {
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.dataset.medField = field;
+    input.value = value;
+    input.maxLength = maxLength;
+    input.placeholder = placeholder;
+    input.setAttribute('aria-label', label);
+    if (field === 'name') input.setAttribute('list', 'medicationNames');
+    fields.append(input);
+  }
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'medication-remove';
+  remove.dataset.medAction = 'remove';
+  remove.setAttribute('aria-label', 'Remove medication');
+  remove.textContent = '×';
+  fields.append(remove);
+
+  row.append(fields, ...makeHelpRating('How much did it help?', MEDICATION, effectiveness, ''));
+  return row;
+}
+
+function removeMedication(card, row) {
+  const panel = row.closest('[data-medication-panel]');
+  row.remove();
+  if (!panel.querySelector('[data-medication]')) {
+    panel.remove();
+    const chip = card.querySelector(`[data-chips="relief"] .chip[data-value="${MEDICATION}"]`);
+    chip.classList.remove('on');
+    chip.setAttribute('aria-pressed', 'false');
+  }
+  showCardError(card, '');
+}
+
+function medicationLabel(item) {
+  return `${item.name || 'Unnamed'}${item.dose ? ` ${item.dose}` : ''}`;
+}
+
+function renderMedicationNames() {
+  const names = PainData.uniqueLabels(entries.flatMap(entry => entry.medications.map(item => item.name)));
+  $('medicationNames').replaceChildren(...names.map(name => new Option('', name)));
+}
+
+function makeHelpRating(label, name, effectiveness, prompt = 'How much did it help?') {
+  const head = document.createElement('div');
+  head.className = 'rating-head';
+  const title = document.createElement('span');
+  title.textContent = label;
   const value = document.createElement('span');
-  value.textContent = effectiveness || 'How much did it help?';
-  head.append(label, value);
+  value.textContent = effectiveness || prompt;
+  head.append(title, value);
 
   const scale = document.createElement('div');
   scale.className = 'relief-scale';
@@ -401,8 +541,7 @@ function makeReliefRow(name, effectiveness = null) {
     button.textContent = level;
     scale.append(button);
   }
-  row.append(head, scale);
-  return row;
+  return [head, scale];
 }
 
 function readSymptoms(card) {
@@ -422,8 +561,20 @@ function readRelief(card) {
     .map(row => ({ name: row.dataset.relief, effectiveness: row.dataset.effectiveness }));
 }
 
-function readTriggers(card) {
-  return [...card.querySelectorAll('[data-chips="triggers"] .chip.on')].map(button => button.dataset.value);
+function readMedications(card) {
+  return [...card.querySelectorAll('[data-medication]')].map(row => ({
+    name: row.querySelector('[data-med-field="name"]').value.trim(),
+    dose: row.querySelector('[data-med-field="dose"]').value.trim(),
+    effectiveness: row.dataset.effectiveness || null,
+  }));
+}
+
+function readTriggerChoices(card) {
+  const rows = [...card.querySelectorAll('[data-trigger-choices] [data-trigger]')];
+  return {
+    triggers: rows.filter(row => row.dataset.known !== 'true').map(row => row.dataset.trigger),
+    knownCauses: rows.filter(row => row.dataset.known === 'true').map(row => row.dataset.trigger),
+  };
 }
 
 function readCharacteristics(card) {
@@ -467,10 +618,25 @@ function handleChipClick(event, card) {
     if (turnOn && !existing) ratings.append(makeRatingRow(chip.dataset.value));
     if (!turnOn && existing) existing.remove();
   }
-  if (container.dataset.chips === 'relief') {
+  if (container.dataset.chips === 'relief' && chip.dataset.value === MEDICATION) {
+    const ratings = card.querySelector('[data-relief-ratings]');
+    const panel = ratings.querySelector('[data-medication-panel]');
+    if (turnOn && !panel) {
+      const added = makeMedicationPanel([]);
+      ratings.prepend(added);
+      added.querySelector('input').focus();
+    }
+    if (!turnOn && panel) panel.remove();
+  } else if (container.dataset.chips === 'relief') {
     const ratings = card.querySelector('[data-relief-ratings]');
     const existing = [...ratings.children].find(row => row.dataset.relief === chip.dataset.value);
     if (turnOn && !existing) ratings.append(makeReliefRow(chip.dataset.value));
+    if (!turnOn && existing) existing.remove();
+  }
+  if (container.dataset.chips === 'triggers') {
+    const choices = card.querySelector('[data-trigger-choices]');
+    const existing = [...choices.children].find(row => row.dataset.trigger === chip.dataset.value);
+    if (turnOn && !existing) choices.append(makeTriggerChoice(chip.dataset.value));
     if (!turnOn && existing) existing.remove();
   }
   showCardError(card, '');
@@ -486,7 +652,7 @@ function showCustomForm(type, card, container) {
   input.maxLength = 40;
   input.placeholder = type === 'symptom' ? 'Symptom name'
     : type === 'characteristic' ? 'Pain characteristic'
-      : type === 'relief' ? 'Relief attempt' : 'Possible trigger';
+      : type === 'relief' ? 'Relief attempt' : 'Trigger or cause';
   input.setAttribute('aria-label', input.placeholder);
   const save = document.createElement('button');
   save.type = 'button'; save.className = 'btn btn-primary btn-sm'; save.dataset.customAction = 'add'; save.textContent = 'Add';
@@ -541,6 +707,11 @@ function removeCustom(type, label) {
       if (row.dataset.relief === label) row.remove();
     }
   }
+  if (type === 'trigger') {
+    for (const row of list.querySelectorAll('[data-trigger-choices] [data-trigger]')) {
+      if (row.dataset.trigger === label) row.remove();
+    }
+  }
   refreshAllChipLists();
   markChanged();
   toast(`${label} removed from your list`);
@@ -557,10 +728,10 @@ function refreshAllChipLists() {
       name: row.dataset.relief,
       effectiveness: row.dataset.effectiveness || null,
     }));
-    const selectedTriggers = readTriggers(card);
+    const selectedTriggers = [...card.querySelectorAll('[data-trigger-choices] [data-trigger]')].map(row => row.dataset.trigger);
     renderSymptomChips(card.querySelector('[data-chips="symptoms"]'), selectedSymptoms);
     renderCharacteristicChips(card.querySelector('[data-chips="characteristics"]'), selectedCharacteristics);
-    renderReliefChips(card.querySelector('[data-chips="relief"]'), selectedRelief);
+    renderReliefChips(card.querySelector('[data-chips="relief"]'), selectedRelief, !!card.querySelector('[data-medication-panel]'));
     renderTriggerChips(card.querySelector('[data-chips="triggers"]'), selectedTriggers);
   }
 }
@@ -580,9 +751,9 @@ function handleRatingClick(event, card) {
 }
 
 function handleEffectivenessClick(event, card) {
-  const button = event.target.closest('[data-effectiveness]');
+  const button = event.target.closest('button[data-effectiveness]');
   if (!button) return;
-  const row = button.closest('[data-relief]');
+  const row = button.closest('[data-medication], [data-relief]');
   row.dataset.effectiveness = button.dataset.effectiveness;
   for (const option of row.querySelectorAll('[data-effectiveness]')) {
     const selected = option === button;
@@ -590,6 +761,18 @@ function handleEffectivenessClick(event, card) {
     option.setAttribute('aria-pressed', String(selected));
   }
   row.querySelector('.rating-head span:last-child').textContent = button.dataset.effectiveness;
+  showCardError(card, '');
+}
+
+function handleCertaintyClick(event, card) {
+  const button = event.target.closest('button[data-certainty]');
+  const row = button.closest('[data-trigger]');
+  row.dataset.known = button.dataset.certainty;
+  for (const option of row.querySelectorAll('button[data-certainty]')) {
+    const selected = option === button;
+    option.classList.toggle('on', selected);
+    option.setAttribute('aria-pressed', String(selected));
+  }
   showCardError(card, '');
 }
 
@@ -607,21 +790,25 @@ function saveEntry(card) {
     return;
   }
 
-  const ongoing = card.querySelector('[data-field="ongoing"]').checked;
+  const endState = selectedEndState(card);
   let endedAt = null;
-  const endValue = card.querySelector('[data-field="endedAt"]').value;
-  if (!ongoing && endValue) {
-    const end = PainData.fromInput(endValue);
-    if (!end) { showCardError(card, 'Choose a valid end time.'); return; }
+  if (endState === 'ended') {
+    const end = PainData.fromInput(card.querySelector('[data-field="endedAt"]').value);
+    if (!end) { showCardError(card, 'Choose when it ended, or pick “Ended, time unknown”.'); return; }
     if (end < date) { showCardError(card, 'The end time cannot be before the start time.'); return; }
     if (end.getTime() > Date.now()) { showCardError(card, 'The end time cannot be in the future.'); return; }
     endedAt = end.toISOString();
   }
 
-  const chosenRelief = card.querySelectorAll('[data-chips="relief"] .chip.on').length;
+  const chosenRelief = card.querySelectorAll(`[data-chips="relief"] .chip.on:not([data-value="${MEDICATION}"])`).length;
   const relief = readRelief(card);
   if (relief.length !== chosenRelief) {
     showCardError(card, 'Choose how much every selected relief attempt helped.');
+    return;
+  }
+  const medications = readMedications(card);
+  if (medications.some(item => !item.effectiveness)) {
+    showCardError(card, 'Choose how much every medication helped.');
     return;
   }
 
@@ -630,12 +817,13 @@ function saveEntry(card) {
     at: date.toISOString(),
     updatedAt: new Date().toISOString(),
     endedAt,
-    ongoing,
+    ongoing: endState === 'ongoing',
     symptoms,
     characteristics: readCharacteristics(card),
     relief,
+    medications,
     impact: readImpact(card),
-    triggers: readTriggers(card),
+    ...readTriggerChoices(card),
     notes: card.querySelector('[data-field="notes"]').value.trim(),
   });
   const next = entries.map(item => item.id === entry.id ? updated : item);
@@ -699,6 +887,7 @@ function repeatEntry(card) {
     relief: [],
     impact: null,
     triggers: [...source.triggers],
+    knownCauses: [...source.knownCauses],
     notes: '',
   });
   if (!persistEntries([repeated, ...entries])) return;
@@ -763,6 +952,36 @@ function monthlyCounts(rows, months = 6) {
     });
   }
   return result;
+}
+
+function appendCountBlock(stats, title, names) {
+  const counts = new Map();
+  for (const name of names) counts.set(name, (counts.get(name) || 0) + 1);
+  if (!counts.size) return;
+  const block = statBlock(title);
+  const peak = Math.max(...counts.values());
+  [...counts].sort((a, b) => b[1] - a[1]).forEach(([name, count]) => block.append(statRow(name, count, count / peak)));
+  stats.append(block);
+}
+
+function appendHelpBlock(stats, title, ratings) {
+  const counts = new Map();
+  for (const [name, effectiveness] of ratings) {
+    const key = name.toLocaleLowerCase();
+    const current = counts.get(key) || { name, count: 0, score: 0 };
+    current.count++;
+    current.score += PainData.reliefLevels.indexOf(effectiveness);
+    counts.set(key, current);
+  }
+  if (!counts.size) return;
+  const block = statBlock(title);
+  [...counts.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .forEach(({ name, count, score }) => {
+      const average = score / count;
+      const description = average >= 1.5 ? 'Strong' : average >= 0.5 ? 'Some' : 'None';
+      block.append(statRow(name, `${description} · ${count}×`, average / 2));
+    });
+  stats.append(block);
 }
 
 function renderStats() {
@@ -860,32 +1079,13 @@ function renderStats() {
     stats.append(impactBlock);
   }
 
-  const reliefCounts = new Map();
-  for (const entry of rows) for (const item of entry.relief) {
-    const current = reliefCounts.get(item.name) || { count: 0, score: 0 };
-    current.count++;
-    current.score += PainData.reliefLevels.indexOf(item.effectiveness);
-    reliefCounts.set(item.name, current);
-  }
-  if (reliefCounts.size) {
-    const reliefBlock = statBlock('Relief attempts · average help');
-    [...reliefCounts].sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
-      .forEach(([name, value]) => {
-        const average = value.score / value.count;
-        const description = average >= 1.5 ? 'Strong' : average >= 0.5 ? 'Some' : 'None';
-        reliefBlock.append(statRow(name, `${description} · ${value.count}×`, average / 2));
-      });
-    stats.append(reliefBlock);
-  }
+  appendHelpBlock(stats, 'Medication · average help',
+    rows.flatMap(entry => entry.medications.map(item => [item.name || 'Unnamed', item.effectiveness])));
+  appendHelpBlock(stats, 'Relief attempts · average help',
+    rows.flatMap(entry => entry.relief.map(item => [item.name, item.effectiveness])));
 
-  const triggerCounts = new Map();
-  for (const entry of rows) for (const trigger of entry.triggers) triggerCounts.set(trigger, (triggerCounts.get(trigger) || 0) + 1);
-  if (triggerCounts.size) {
-    const triggerBlock = statBlock('Possible triggers');
-    const peak = Math.max(...triggerCounts.values());
-    [...triggerCounts].sort((a, b) => b[1] - a[1]).forEach(([name, count]) => triggerBlock.append(statRow(name, count, count / peak)));
-    stats.append(triggerBlock);
-  }
+  appendCountBlock(stats, 'Known causes', rows.flatMap(entry => entry.knownCauses));
+  appendCountBlock(stats, 'Possible triggers', rows.flatMap(entry => entry.triggers));
 }
 
 function selectedReportEntries() {
@@ -916,7 +1116,9 @@ function entryDetailLines(entry) {
     entry.symptoms.length ? `Symptoms: ${entry.symptoms.map(item => `${item.name} ${item.intensity}/10`).join(', ')}` : 'Symptoms: none recorded',
     entry.characteristics.length ? `Characteristics: ${entry.characteristics.join(', ')}` : '',
     entry.impact == null ? '' : `Activity impact: ${IMPACT_LABELS[entry.impact]}`,
+    entry.medications.length ? `Medication: ${entry.medications.map(item => `${medicationLabel(item)} (${item.effectiveness.toLowerCase()})`).join(', ')}` : '',
     entry.relief.length ? `Relief: ${entry.relief.map(item => `${item.name} (${item.effectiveness.toLowerCase()})`).join(', ')}` : '',
+    entry.knownCauses.length ? `Known causes: ${entry.knownCauses.join(', ')}` : '',
     entry.triggers.length ? `Possible triggers: ${entry.triggers.join(', ')}` : '',
     entry.notes ? `Notes: ${entry.notes}` : '',
   ].filter(Boolean);
@@ -979,7 +1181,7 @@ function exportCsvReport() {
     return;
   }
   error.hidden = true;
-  const header = ['Start', 'End', 'Duration', 'Ongoing', 'Symptoms', 'Pain characteristics', 'Activity impact', 'Relief attempts', 'Possible triggers', 'Notes'];
+  const header = ['Start', 'End', 'Duration', 'Ongoing', 'Symptoms', 'Pain characteristics', 'Activity impact', 'Medication', 'Relief attempts', 'Known causes', 'Possible triggers', 'Notes'];
   const records = rows.map(entry => [
     entry.at,
     entry.endedAt || '',
@@ -988,7 +1190,9 @@ function exportCsvReport() {
     entry.symptoms.map(item => `${item.name} ${item.intensity}/10`).join('; '),
     entry.characteristics.join('; '),
     entry.impact == null ? '' : IMPACT_LABELS[entry.impact],
+    entry.medications.map(item => `${medicationLabel(item)} (${item.effectiveness})`).join('; '),
     entry.relief.map(item => `${item.name} (${item.effectiveness})`).join('; '),
+    entry.knownCauses.join('; '),
     entry.triggers.join('; '),
     entry.notes,
   ]);
@@ -1123,24 +1327,31 @@ list.addEventListener('click', event => {
     addCustom(form.dataset.customType, card, form.querySelector('input').value);
     return;
   }
+  const medAction = event.target.closest('[data-med-action]')?.dataset.medAction;
+  if (medAction === 'add') {
+    const row = makeMedicationRow();
+    event.target.closest('[data-medication-panel]').querySelector('.medication-list').append(row);
+    row.querySelector('input').focus();
+    return;
+  }
+  if (medAction === 'remove') { removeMedication(card, event.target.closest('[data-medication]')); return; }
   const action = event.target.closest('[data-act]')?.dataset.act;
   if (action === 'toggle') { setOpen(card, card.querySelector('.entry-body').hidden); return; }
   if (action === 'repeat') { repeatEntry(card); return; }
+  if (action === 'end-now') { endNow(card); return; }
   if (action === 'save') { saveEntry(card); return; }
   if (action === 'cancel') { cancelEntry(card); return; }
   if (action === 'delete') { deleteEntry(card); return; }
   if (event.target.closest('[data-chips]')) handleChipClick(event, card);
   else if (event.target.closest('[data-rating]')) handleRatingClick(event, card);
-  else if (event.target.closest('[data-effectiveness]')) handleEffectivenessClick(event, card);
+  else if (event.target.closest('button[data-effectiveness]')) handleEffectivenessClick(event, card);
+  else if (event.target.closest('button[data-certainty]')) handleCertaintyClick(event, card);
 });
 
 list.addEventListener('change', event => {
+  if (!event.target.matches('[data-field="endState"]')) return;
   const card = event.target.closest('.entry');
-  if (event.target.matches('[data-field="ongoing"]')) {
-    if (event.target.checked) card.querySelector('[data-field="endedAt"]').value = '';
-  } else if (event.target.matches('[data-field="endedAt"]')) {
-    if (event.target.value) card.querySelector('[data-field="ongoing"]').checked = false;
-  } else return;
+  updateEndRow(card);
   showCardError(card, '');
 });
 

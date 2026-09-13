@@ -32,8 +32,13 @@ const PainData = (() => {
       && (entry.relief == null || (Array.isArray(entry.relief)
         && entry.relief.every(item => item && typeof item.name === 'string' && item.name.trim()
           && reliefLevels.includes(item.effectiveness))))
+      && (entry.medications == null || (Array.isArray(entry.medications)
+        && entry.medications.every(item => item && typeof item.name === 'string'
+          && (item.dose == null || typeof item.dose === 'string') && reliefLevels.includes(item.effectiveness))))
       && (entry.triggers == null || (Array.isArray(entry.triggers)
         && entry.triggers.every(value => typeof value === 'string' && value.trim())))
+      && (entry.knownCauses == null || (Array.isArray(entry.knownCauses)
+        && entry.knownCauses.every(value => typeof value === 'string' && value.trim())))
       && (entry.symptoms == null || (Array.isArray(entry.symptoms)
         && entry.symptoms.every(item => item && typeof item.name === 'string' && item.name.trim()
           && Number.isInteger(item.intensity) && item.intensity >= 0 && item.intensity <= 10)));
@@ -49,13 +54,21 @@ const PainData = (() => {
       }
     }
     const reliefMap = new Map();
+    let legacyMedication = null;
     for (const item of entry.relief || []) {
       const name = String(item.name).trim();
       const key = name.toLocaleLowerCase();
-      if (name && reliefLevels.includes(item.effectiveness)) {
-        reliefMap.set(key, { name, effectiveness: item.effectiveness });
-      }
+      if (!name || !reliefLevels.includes(item.effectiveness)) continue;
+      if (key === 'medication') legacyMedication = item.effectiveness;
+      else reliefMap.set(key, { name, effectiveness: item.effectiveness });
     }
+    const medications = (entry.medications || [])
+      .filter(item => item && reliefLevels.includes(item.effectiveness))
+      .map(item => ({ name: String(item.name ?? '').trim(), dose: String(item.dose ?? '').trim(), effectiveness: item.effectiveness }));
+    // Entries from before medication details keep their overall Medication rating as one unnamed medication.
+    if (!medications.length && legacyMedication) medications.push({ name: '', dose: '', effectiveness: legacyMedication });
+    const knownCauses = uniqueLabels(entry.knownCauses);
+    const causeKeys = new Set(knownCauses.map(value => value.toLocaleLowerCase()));
     const ongoing = entry.ongoing === true;
     return {
       id: String(entry.id || uid()),
@@ -67,8 +80,10 @@ const PainData = (() => {
       symptoms: [...symptomMap.values()],
       characteristics: uniqueLabels(entry.characteristics),
       relief: [...reliefMap.values()],
+      medications,
       impact: Number.isInteger(entry.impact) && entry.impact >= 0 && entry.impact <= 3 ? entry.impact : null,
-      triggers: uniqueLabels(entry.triggers),
+      triggers: uniqueLabels(entry.triggers).filter(value => !causeKeys.has(value.toLocaleLowerCase())),
+      knownCauses,
     };
   }
 
@@ -79,9 +94,13 @@ const PainData = (() => {
     const relief = entry.relief
       .map(item => [item.name.toLocaleLowerCase(), item.effectiveness])
       .sort((a, b) => a[0].localeCompare(b[0]));
+    const medications = entry.medications
+      .map(item => JSON.stringify([item.name.toLocaleLowerCase(), item.dose.toLocaleLowerCase(), item.effectiveness]))
+      .sort();
     return JSON.stringify([entry.at, entry.endedAt, entry.ongoing, symptoms,
       entry.characteristics.map(value => value.toLocaleLowerCase()).sort(),
-      relief, entry.impact, entry.triggers.map(value => value.toLocaleLowerCase()).sort(), entry.notes]);
+      relief, entry.impact, entry.triggers.map(value => value.toLocaleLowerCase()).sort(), entry.notes, medications,
+      entry.knownCauses.map(value => value.toLocaleLowerCase()).sort()]);
   }
 
   function empty() {

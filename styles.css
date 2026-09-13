@@ -172,7 +172,7 @@ h1 {
 .repeat-entry:hover { border-color: var(--line); background: var(--surface-2); color: var(--accent); }
 .entry-head-main { min-width: 0; display: grid; gap: 4px; }
 .entry-when { font-family: Georgia, "Times New Roman", serif; font-size: 1.18rem; }
-.entry-meta, .entry-characteristics, .entry-duration, .entry-impact, .entry-relief, .entry-notes {
+.entry-meta, .entry-characteristics, .entry-duration, .entry-impact, .entry-medication, .entry-relief, .entry-triggers, .entry-notes {
   display: block;
   overflow: hidden;
   color: var(--text-dim);
@@ -182,7 +182,7 @@ h1 {
 }
 .entry-meta strong { color: var(--accent); font-weight: 750; }
 .entry-characteristics { color: var(--accent); }
-.entry-duration, .entry-impact, .entry-relief { font-size: .79rem; }
+.entry-duration, .entry-impact, .entry-medication, .entry-relief, .entry-triggers { font-size: .79rem; }
 .entry-notes { font-style: italic; }
 .chev { width: 20px; flex: 0 0 auto; fill: none; stroke: var(--text-dim); stroke-width: 2; transition: transform .2s ease; }
 .entry.open .chev { transform: rotate(180deg); }
@@ -191,7 +191,7 @@ h1 {
 
 .field-label, legend { display: block; margin: 0 0 8px; font-size: .86rem; font-weight: 750; }
 .field-hint { margin: -4px 0 12px; color: var(--text-dim); font-size: .82rem; }
-input[type="datetime-local"], textarea, select {
+input[type="datetime-local"], input[type="text"], textarea, select {
   width: 100%;
   min-height: 46px;
   padding: 10px 12px;
@@ -204,7 +204,9 @@ input[type="datetime-local"], textarea, select {
 input:focus, textarea:focus, select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
 .optional { color: var(--text-dim); font-weight: 500; }
-.timing-options { display: grid; gap: 13px; margin-top: 13px; }
+.timing-options { display: grid; gap: 13px; min-width: 0; margin: 18px 0 0; padding: 0; border: 0; }
+.end-time { display: flex; flex-wrap: wrap; gap: 9px; margin-left: 26px; }
+.end-time input { flex: 1 1 200px; width: auto; min-width: 0; }
 .check-line { display: inline-flex; width: fit-content; align-items: center; gap: 8px; color: var(--text-dim); font-size: .86rem; font-weight: 650; cursor: pointer; }
 .check-line input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
 .control-group { min-width: 0; padding: 0; margin: 22px 0; border: 0; }
@@ -288,6 +290,15 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
 }
 .relief-scale button:hover { border-color: var(--accent); color: var(--accent); }
 .relief-scale button.on { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }
+.medication-list { display: grid; gap: 10px; }
+.medication-row { padding: 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.medication-fields { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) 46px; gap: 7px; margin-bottom: 10px; }
+.medication-remove { border: 1px solid var(--line-strong); border-radius: 7px; background: transparent; color: var(--text-dim); font-size: 1.2rem; cursor: pointer; }
+.medication-remove:hover { border-color: var(--danger); color: var(--danger); }
+.medication-panel .chip-add { margin-top: 10px; }
+.trigger-choices { display: grid; gap: 10px; margin-top: 15px; }
+.trigger-choice { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 15rem); align-items: center; gap: 10px; font-size: .84rem; font-weight: 750; overflow-wrap: anywhere; }
+.trigger-scale { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
 .row { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
 .entry-actions { margin-top: 22px; }
@@ -362,6 +373,9 @@ summary { padding: 16px 0; color: var(--text-dim); font-size: .92rem; font-weigh
   .rating-row { padding-inline: 9px; }
   .custom-add { grid-template-columns: 1fr auto; }
   .custom-add .btn-ghost { grid-column: 1 / -1; }
+  .medication-fields { grid-template-columns: minmax(0, 1fr) 46px; }
+  .medication-fields [data-med-field="name"] { grid-column: 1 / -1; }
+  .trigger-choice { grid-template-columns: 1fr; gap: 6px; }
   .repeat-entry { width: 66px; flex-basis: 66px; margin-right: 5px; }
 }
 

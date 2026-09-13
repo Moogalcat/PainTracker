@@ -9,9 +9,10 @@ A small, private, installable pain diary inspired by the companion Migraine Log 
 - Custom symptom chips
 - A tappable 0–10 intensity scale for every selected symptom
 - Common and custom pain-characteristic chips
-- Optional end time and duration, or mark an entry as ongoing
+- Mark an entry as still ongoing, ended at a set time (with a "Now" shortcut), or ended at an unknown time
 - Activity-impact levels and relief attempts with effectiveness ratings
-- User-defined possible triggers
+- Medication names and doses, with a help rating for each medication
+- User-defined triggers, each marked as a possible trigger or a known cause
 - Quick repeat for recurring symptom patterns
 - Notes, history, six-month activity charts, statistics, printable doctor summaries, and CSV reports
 - Optional in-app and system reminders for ongoing entries

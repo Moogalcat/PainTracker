@@ -129,6 +129,8 @@
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
   <section id="printSummary" aria-label="Printable pain summary"></section>
 
+  <datalist id="medicationNames"></datalist>
+
   <template id="entryTpl">
     <li class="card entry">
       <div class="entry-top">
@@ -139,7 +141,9 @@
             <span class="entry-characteristics"></span>
             <span class="entry-duration"></span>
             <span class="entry-impact"></span>
+            <span class="entry-medication"></span>
             <span class="entry-relief"></span>
+            <span class="entry-triggers"></span>
             <span class="entry-notes"></span>
           </span>
           <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
@@ -151,13 +155,16 @@
 
         <label class="field-label" for="">Date &amp; time</label>
         <input type="datetime-local" data-field="at" required>
-        <div class="timing-options">
-          <label class="check-line"><input type="checkbox" data-field="ongoing"> Still ongoing</label>
-          <div data-end-row>
-            <label class="field-label">End time <span class="optional">(optional)</span></label>
-            <input type="datetime-local" data-field="endedAt">
+        <fieldset class="timing-options">
+          <legend>Status</legend>
+          <label class="check-line"><input type="radio" data-field="endState" value="ongoing"> Still ongoing</label>
+          <label class="check-line"><input type="radio" data-field="endState" value="ended"> Ended at</label>
+          <div class="end-time" data-end-row hidden>
+            <input type="datetime-local" data-field="endedAt" aria-label="End time">
+            <button type="button" class="btn btn-ghost btn-sm" data-act="end-now" aria-label="Set end time to now">Now</button>
           </div>
-        </div>
+          <label class="check-line"><input type="radio" data-field="endState" value="unknown"> Ended, time unknown</label>
+        </fieldset>
 
         <fieldset class="control-group">
           <legend>Symptoms</legend>
@@ -186,9 +193,10 @@
         </fieldset>
 
         <fieldset class="control-group">
-          <legend>Possible triggers</legend>
-          <p class="field-hint">Add anything that may have contributed.</p>
+          <legend>Triggers and causes</legend>
+          <p class="field-hint">Select anything that may have contributed, then mark each as a possible trigger or a known cause.</p>
           <div class="chips" data-chips="triggers"></div>
+          <div class="trigger-choices" data-trigger-choices></div>
         </fieldset>
 
         <label class="field-label">Notes</label>

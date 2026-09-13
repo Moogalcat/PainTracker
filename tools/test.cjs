@@ -56,6 +56,8 @@ test('older entries migrate with safe defaults for new tracking fields', () => {
   const restored = D.parse([{ id: 'old', at, symptoms: [], triggers: [], notes: '' }], true);
   assert.deepEqual(restored.entries[0].characteristics, []);
   assert.deepEqual(restored.entries[0].relief, []);
+  assert.deepEqual(restored.entries[0].medications, []);
+  assert.deepEqual(restored.entries[0].knownCauses, []);
   assert.equal(restored.entries[0].impact, null);
   assert.equal(restored.entries[0].endedAt, null);
   assert.equal(restored.entries[0].ongoing, false);
@@ -99,4 +101,34 @@ test('local date conversion rejects impossible and future-shaped junk dates', ()
   assert.equal(D.fromInput('2026-02-30T10:00'), null);
   assert.equal(D.fromInput('2026-09-13T10:00junk'), null);
   assert.equal(D.toInput(D.fromInput('2026-09-13T10:00')), '2026-09-13T10:00');
+});
+
+test('medications keep name, dose, and rating, and older Medication ratings migrate', () => {
+  const medications = [
+    { name: ' Ibuprofen ', dose: ' 400 mg ', effectiveness: 'Strong' },
+    { name: 'Paracetamol', dose: '1 g', effectiveness: 'Some' },
+  ];
+  const restored = D.parse(JSON.parse(JSON.stringify(state([entry({ medications })]))), true);
+  assert.deepEqual(restored.entries[0].medications, [
+    { name: 'Ibuprofen', dose: '400 mg', effectiveness: 'Strong' },
+    { name: 'Paracetamol', dose: '1 g', effectiveness: 'Some' },
+  ]);
+  assert.equal(D.valid({ at, medications: [{ name: 'Ibuprofen', dose: '400 mg', effectiveness: 'A lot' }] }), false);
+
+  const legacy = D.normalise({ at, relief: [{ name: 'Medication', effectiveness: 'Some' }, { name: 'Rest', effectiveness: 'None' }] });
+  assert.deepEqual(legacy.relief, [{ name: 'Rest', effectiveness: 'None' }]);
+  assert.deepEqual(legacy.medications, [{ name: '', dose: '', effectiveness: 'Some' }]);
+  assert.equal(D.contentKey(legacy), D.contentKey(D.normalise(legacy)));
+  assert.notEqual(D.contentKey(entry({ medications })),
+    D.contentKey(entry({ medications: [{ ...medications[0], dose: '200 mg' }, medications[1]] })));
+});
+
+test('known causes stay separate from possible triggers', () => {
+  const result = entry({ triggers: ['Stress', 'Dental work'], knownCauses: [' Dental work ', 'dental work'] });
+  assert.deepEqual(result.knownCauses, ['Dental work']);
+  assert.deepEqual(result.triggers, ['Stress']);
+  const restored = D.parse(JSON.parse(JSON.stringify(state([result]))), true);
+  assert.deepEqual(restored.entries[0].knownCauses, ['Dental work']);
+  assert.equal(D.valid({ at, knownCauses: [''] }), false);
+  assert.notEqual(D.contentKey(result), D.contentKey(entry({ triggers: ['Stress', 'Dental work'] })));
 });
