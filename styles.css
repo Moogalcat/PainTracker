@@ -306,6 +306,7 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .footer { margin-top: 30px; }
 .footer details { padding-bottom: 8px; border-top: 1px solid var(--line); }
 summary { padding: 16px 0; color: var(--text-dim); font-size: .92rem; font-weight: 700; cursor: pointer; }
+.system-feature > summary { font-weight: 500; }
 .panel-status { font-weight: 450; }
 .panel-status.stale { color: var(--accent); font-weight: 700; }
 .note { max-width: 34rem; color: var(--text-dim); font-size: .87rem; line-height: 1.6; }
