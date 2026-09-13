@@ -136,6 +136,11 @@ h1 {
   box-shadow: var(--shadow);
 }
 .entry-top { display: flex; align-items: stretch; }
+.entry.just-repeated { animation: repeat-flash 600ms ease-in-out 3; }
+@keyframes repeat-flash {
+  0%, 100% { border-color: var(--line); background: var(--surface); box-shadow: var(--shadow); }
+  50% { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 3px var(--accent-soft); }
+}
 .entry-head {
   display: flex;
   width: 100%;
@@ -362,6 +367,7 @@ summary { padding: 16px 0; color: var(--text-dim); font-size: .92rem; font-weigh
 
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; transition: none !important; }
+  .entry.just-repeated { animation: none; border-color: var(--accent); background: var(--accent-soft); }
 }
 
 @media print {

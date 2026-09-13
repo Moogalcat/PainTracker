@@ -27,6 +27,7 @@ let state = loadState();
 let entries = state.entries;
 let visibleCount = INITIAL_VISIBLE;
 let openOnRender = null;
+let highlightOnRender = null;
 let toastTimer;
 let reminderTimer;
 const freshEntryIds = new Set();
@@ -146,6 +147,7 @@ function setOpen(card, open) {
 
 function render() {
   const wasOpen = list.querySelector('.entry.open')?.dataset.id;
+  const highlightedId = highlightOnRender;
   list.replaceChildren();
   const shown = entries.slice(0, visibleCount);
   let lastYear = null;
@@ -162,6 +164,7 @@ function render() {
 
     const card = tpl.content.firstElementChild.cloneNode(true);
     card.dataset.id = entry.id;
+    card.classList.toggle('just-repeated', entry.id === highlightedId);
     card.querySelector('.entry-when').textContent = describe(new Date(entry.at));
     renderEntrySummary(card, entry);
     fillEditor(card, entry);
@@ -170,6 +173,10 @@ function render() {
   }
 
   openOnRender = null;
+  highlightOnRender = null;
+  if (highlightedId) {
+    setTimeout(() => list.querySelector(`[data-id="${CSS.escape(highlightedId)}"]`)?.classList.remove('just-repeated'), 2100);
+  }
   $('empty').hidden = entries.length !== 0;
   $('showOlder').hidden = visibleCount >= entries.length;
   $('showOlder').textContent = `Show older entries (${Math.max(0, entries.length - visibleCount)})`;
@@ -705,12 +712,12 @@ function repeatEntry(card) {
   });
   if (!persistEntries([repeated, ...entries])) return;
   freshEntryIds.add(repeated.id);
-  openOnRender = repeated.id;
+  highlightOnRender = repeated.id;
   visibleCount = Math.max(visibleCount, 1);
   markChanged();
   render();
   requestAnimationFrame(() => list.querySelector(`[data-id="${CSS.escape(repeated.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
-  toast('Repeated entry ready to update');
+  toast('Copied to a new entry at the current time');
 }
 
 function renderTally() {
