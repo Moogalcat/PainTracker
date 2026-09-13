@@ -12,6 +12,8 @@ const BUILT_IN_CHARACTERISTICS = [
   'Sharp', 'Dull', 'Aching', 'Burning', 'Throbbing',
   'Cramping', 'Pressure', 'Tingling', 'Radiating',
 ];
+const BUILT_IN_RELIEF = ['Medication', 'Rest', 'Heat', 'Cold', 'Stretching', 'Hydration', 'Food', 'Movement'];
+const IMPACT_LABELS = ['No limitation', 'Slowed down', 'Stopped activities', 'Needed bed rest'];
 const MAX_CUSTOM_ITEMS = 12;
 const INITIAL_VISIBLE = 6;
 const HISTORY_BATCH = 12;
@@ -26,7 +28,9 @@ let entries = state.entries;
 let visibleCount = INITIAL_VISIBLE;
 let openOnRender = null;
 let toastTimer;
+let reminderTimer;
 const freshEntryIds = new Set();
+const remindedThisSession = new Set();
 
 function readJSON(key, fallback) {
   try {
@@ -54,6 +58,7 @@ function loadState() {
       entries: loaded.entries,
       customSymptoms: loaded.customSymptoms,
       customCharacteristics: loaded.customCharacteristics,
+      customRelief: loaded.customRelief,
       customTriggers: loaded.customTriggers,
       preferences: loaded.preferences,
       deletedIds: loaded.deletedIds,
@@ -77,6 +82,7 @@ function persistState(next, recovering = false) {
       entries: [...next.entries].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
       customSymptoms: next.customSymptoms,
       customCharacteristics: next.customCharacteristics,
+      customRelief: next.customRelief,
       customTriggers: next.customTriggers,
       preferences: next.preferences,
       deletedIds: next.deletedIds,
@@ -118,6 +124,14 @@ function describe(date) {
   const now = new Date();
   const sameYear = date.getFullYear() === now.getFullYear();
   return `${sameYear ? dateFmt.format(date) : dateFmtYear.format(date)}, ${timeFmt.format(date)}`;
+}
+
+function durationText(start, end) {
+  const minutes = Math.max(0, Math.round((Date.parse(end) - Date.parse(start)) / 60000));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? `${hours}h ${remainder}m` : `${hours}h`;
 }
 
 function setOpen(card, open) {
@@ -164,6 +178,8 @@ function render() {
   renderTally();
   renderStats();
   renderBackupStatus();
+  renderReminderStatus();
+  scheduleReminder();
 }
 
 function renderEntrySummary(card, entry) {
@@ -183,6 +199,16 @@ function renderEntrySummary(card, entry) {
   const characteristics = card.querySelector('.entry-characteristics');
   characteristics.textContent = entry.characteristics.join(' · ');
   characteristics.hidden = !entry.characteristics.length;
+  const duration = card.querySelector('.entry-duration');
+  duration.textContent = entry.ongoing ? 'Ongoing' : entry.endedAt ? `Duration ${durationText(entry.at, entry.endedAt)}` : '';
+  duration.hidden = !duration.textContent;
+  const impact = card.querySelector('.entry-impact');
+  impact.textContent = entry.impact == null ? '' : `Impact: ${IMPACT_LABELS[entry.impact]}`;
+  impact.hidden = !impact.textContent;
+  const relief = card.querySelector('.entry-relief');
+  relief.textContent = entry.relief.length
+    ? `Relief: ${entry.relief.map(item => `${item.name} — ${item.effectiveness.toLowerCase()}`).join(' · ')}` : '';
+  relief.hidden = !relief.textContent;
   const notes = card.querySelector('.entry-notes');
   notes.textContent = entry.notes;
   notes.hidden = !entry.notes;
@@ -190,11 +216,27 @@ function renderEntrySummary(card, entry) {
 
 function fillEditor(card, entry) {
   card.querySelector('[data-field="at"]').value = PainData.toInput(new Date(entry.at));
+  const ongoing = card.querySelector('[data-field="ongoing"]');
+  ongoing.checked = entry.ongoing;
+  const ended = card.querySelector('[data-field="endedAt"]');
+  ended.value = entry.endedAt ? PainData.toInput(new Date(entry.endedAt)) : '';
+  updateEndControl(card);
   card.querySelector('[data-field="notes"]').value = entry.notes;
   renderSymptomChips(card.querySelector('[data-chips="symptoms"]'), entry.symptoms);
   renderRatings(card.querySelector('[data-ratings]'), entry.symptoms);
   renderCharacteristicChips(card.querySelector('[data-chips="characteristics"]'), entry.characteristics);
+  renderImpactChips(card.querySelector('[data-chips="impact"]'), entry.impact);
+  renderReliefChips(card.querySelector('[data-chips="relief"]'), entry.relief);
+  renderReliefRatings(card.querySelector('[data-relief-ratings]'), entry.relief);
   renderTriggerChips(card.querySelector('[data-chips="triggers"]'), entry.triggers);
+}
+
+function updateEndControl(card) {
+  const ongoing = card.querySelector('[data-field="ongoing"]').checked;
+  const row = card.querySelector('[data-end-row]');
+  const input = row.querySelector('[data-field="endedAt"]');
+  input.disabled = ongoing;
+  row.classList.toggle('disabled', ongoing);
 }
 
 function allSymptoms() {
@@ -203,6 +245,10 @@ function allSymptoms() {
 
 function allCharacteristics() {
   return [...BUILT_IN_CHARACTERISTICS, ...state.customCharacteristics];
+}
+
+function allRelief() {
+  return [...BUILT_IN_RELIEF, ...state.customRelief];
 }
 
 function selectedNames(card) {
@@ -260,6 +306,21 @@ function renderCharacteristicChips(container, characteristics) {
   container.append(addChip('characteristic'));
 }
 
+function renderImpactChips(container, impact) {
+  container.replaceChildren();
+  IMPACT_LABELS.forEach((label, index) => container.append(makeChip(label, impact === index, false)));
+}
+
+function renderReliefChips(container, relief) {
+  const selected = new Set(relief.map(item => item.name.toLocaleLowerCase()));
+  const options = PainData.uniqueLabels([...allRelief(), ...relief.map(item => item.name)]);
+  container.replaceChildren();
+  for (const label of options) {
+    container.append(makeChip(label, selected.has(label.toLocaleLowerCase()), state.customRelief.includes(label)));
+  }
+  container.append(addChip('relief'));
+}
+
 function renderTriggerChips(container, triggers) {
   const selected = new Set(triggers.map(item => item.toLocaleLowerCase()));
   const options = PainData.uniqueLabels([...state.customTriggers, ...triggers]);
@@ -279,21 +340,21 @@ function makeRatingRow(name, intensity = null) {
   const row = document.createElement('div');
   row.className = 'rating-row';
   row.dataset.symptom = name;
-  if (intensity) row.dataset.intensity = String(intensity);
+  if (Number.isInteger(intensity)) row.dataset.intensity = String(intensity);
 
   const head = document.createElement('div');
   head.className = 'rating-head';
   const label = document.createElement('span');
   label.textContent = name;
   const value = document.createElement('span');
-  value.textContent = intensity ? `${intensity} / 10` : 'Choose 1–10';
+  value.textContent = Number.isInteger(intensity) ? `${intensity} / 10` : 'Choose 0–10';
   head.append(label, value);
 
   const scale = document.createElement('div');
   scale.className = 'scale';
   scale.setAttribute('role', 'group');
   scale.setAttribute('aria-label', `${name} intensity`);
-  for (let number = 1; number <= 10; number++) {
+  for (let number = 0; number <= 10; number++) {
     const button = document.createElement('button');
     button.type = 'button';
     button.dataset.rating = String(number);
@@ -305,15 +366,62 @@ function makeRatingRow(name, intensity = null) {
   }
   const ends = document.createElement('div');
   ends.className = 'scale-ends';
-  ends.innerHTML = '<span>Mild</span><span>Severe</span>';
+  ends.innerHTML = '<span>None</span><span>Severe</span>';
   row.append(head, scale, ends);
   return row;
 }
 
+function renderReliefRatings(container, relief) {
+  container.replaceChildren();
+  for (const item of relief) container.append(makeReliefRow(item.name, item.effectiveness));
+}
+
+function makeReliefRow(name, effectiveness = null) {
+  const row = document.createElement('div');
+  row.className = 'relief-row';
+  row.dataset.relief = name;
+  if (PainData.reliefLevels.includes(effectiveness)) row.dataset.effectiveness = effectiveness;
+
+  const head = document.createElement('div');
+  head.className = 'rating-head';
+  const label = document.createElement('span');
+  label.textContent = name;
+  const value = document.createElement('span');
+  value.textContent = effectiveness || 'How much did it help?';
+  head.append(label, value);
+
+  const scale = document.createElement('div');
+  scale.className = 'relief-scale';
+  scale.setAttribute('role', 'group');
+  scale.setAttribute('aria-label', `${name} effectiveness`);
+  for (const level of PainData.reliefLevels) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.dataset.effectiveness = level;
+    button.className = level === effectiveness ? 'on' : '';
+    button.setAttribute('aria-pressed', String(level === effectiveness));
+    button.textContent = level;
+    scale.append(button);
+  }
+  row.append(head, scale);
+  return row;
+}
+
 function readSymptoms(card) {
-  return [...card.querySelectorAll('.rating-row')]
-    .filter(row => row.dataset.intensity)
+  return [...card.querySelectorAll('.rating-row[data-symptom]')]
+    .filter(row => row.dataset.intensity !== undefined)
     .map(row => ({ name: row.dataset.symptom, intensity: Number(row.dataset.intensity) }));
+}
+
+function readImpact(card) {
+  const selected = card.querySelector('[data-chips="impact"] .chip.on');
+  return selected ? IMPACT_LABELS.indexOf(selected.dataset.value) : null;
+}
+
+function readRelief(card) {
+  return [...card.querySelectorAll('[data-relief-ratings] [data-relief]')]
+    .filter(row => PainData.reliefLevels.includes(row.dataset.effectiveness))
+    .map(row => ({ name: row.dataset.relief, effectiveness: row.dataset.effectiveness }));
 }
 
 function readTriggers(card) {
@@ -336,7 +444,7 @@ function handleChipClick(event, card) {
 
   const remove = event.target.closest('[data-remove]');
   if (remove) {
-    const type = { symptoms: 'symptom', characteristics: 'characteristic', triggers: 'trigger' }
+    const type = { symptoms: 'symptom', characteristics: 'characteristic', relief: 'relief', triggers: 'trigger' }
       [remove.closest('[data-chips]').dataset.chips];
     removeCustom(type, remove.dataset.remove);
     return;
@@ -346,6 +454,12 @@ function handleChipClick(event, card) {
   if (!chip) return;
   const container = chip.closest('[data-chips]');
   const turnOn = !chip.classList.contains('on');
+  if (container.dataset.chips === 'impact') {
+    for (const option of container.querySelectorAll('.chip.on')) {
+      option.classList.remove('on');
+      option.setAttribute('aria-pressed', 'false');
+    }
+  }
   chip.classList.toggle('on', turnOn);
   chip.setAttribute('aria-pressed', String(turnOn));
 
@@ -353,6 +467,12 @@ function handleChipClick(event, card) {
     const ratings = card.querySelector('[data-ratings]');
     const existing = [...ratings.children].find(row => row.dataset.symptom === chip.dataset.value);
     if (turnOn && !existing) ratings.append(makeRatingRow(chip.dataset.value));
+    if (!turnOn && existing) existing.remove();
+  }
+  if (container.dataset.chips === 'relief') {
+    const ratings = card.querySelector('[data-relief-ratings]');
+    const existing = [...ratings.children].find(row => row.dataset.relief === chip.dataset.value);
+    if (turnOn && !existing) ratings.append(makeReliefRow(chip.dataset.value));
     if (!turnOn && existing) existing.remove();
   }
   showCardError(card, '');
@@ -367,7 +487,8 @@ function showCustomForm(type, card, container) {
   input.type = 'text';
   input.maxLength = 40;
   input.placeholder = type === 'symptom' ? 'Symptom name'
-    : type === 'characteristic' ? 'Pain characteristic' : 'Possible trigger';
+    : type === 'characteristic' ? 'Pain characteristic'
+      : type === 'relief' ? 'Relief attempt' : 'Possible trigger';
   input.setAttribute('aria-label', input.placeholder);
   const save = document.createElement('button');
   save.type = 'button'; save.className = 'btn btn-primary btn-sm'; save.dataset.customAction = 'add'; save.textContent = 'Add';
@@ -383,9 +504,10 @@ function addCustom(type, card, rawValue) {
   if (!value) { showCardError(card, `Enter a ${type} name first.`); return; }
   if (value.length > 40) { showCardError(card, 'Please use a name of 40 characters or fewer.'); return; }
 
-  const field = { symptom: 'customSymptoms', characteristic: 'customCharacteristics', trigger: 'customTriggers' }[type];
+  const field = { symptom: 'customSymptoms', characteristic: 'customCharacteristics', relief: 'customRelief', trigger: 'customTriggers' }[type];
   const existing = type === 'symptom' ? allSymptoms()
-    : type === 'characteristic' ? allCharacteristics() : state.customTriggers;
+    : type === 'characteristic' ? allCharacteristics()
+      : type === 'relief' ? allRelief() : state.customTriggers;
   const match = existing.find(item => item.toLocaleLowerCase() === value.toLocaleLowerCase());
   if (!match && state[field].length >= MAX_CUSTOM_ITEMS) {
     showCardError(card, `You can keep up to ${MAX_CUSTOM_ITEMS} custom ${type}s.`);
@@ -400,7 +522,7 @@ function addCustom(type, card, rawValue) {
   refreshAllChipLists();
 
   const current = list.querySelector(`[data-id="${CSS.escape(card.dataset.id)}"]`);
-  const chipGroup = { symptom: 'symptoms', characteristic: 'characteristics', trigger: 'triggers' }[type];
+  const chipGroup = { symptom: 'symptoms', characteristic: 'characteristics', relief: 'relief', trigger: 'triggers' }[type];
   const currentChip = [...current.querySelectorAll(`[data-chips="${chipGroup}"] .chip[data-value]`)]
     .find(button => button.dataset.value === label);
   if (currentChip && !currentChip.classList.contains('on')) currentChip.click();
@@ -409,11 +531,16 @@ function addCustom(type, card, rawValue) {
 
 function removeCustom(type, label) {
   if (!window.confirm(`Remove “${label}” from your ${type} list? Existing saved entries will keep it.`)) return;
-  const field = { symptom: 'customSymptoms', characteristic: 'customCharacteristics', trigger: 'customTriggers' }[type];
+  const field = { symptom: 'customSymptoms', characteristic: 'customCharacteristics', relief: 'customRelief', trigger: 'customTriggers' }[type];
   if (!persistState({ ...state, [field]: state[field].filter(item => item !== label) })) return;
   if (type === 'symptom') {
-    for (const row of list.querySelectorAll('.rating-row')) {
+    for (const row of list.querySelectorAll('.rating-row[data-symptom]')) {
       if (row.dataset.symptom === label) row.remove();
+    }
+  }
+  if (type === 'relief') {
+    for (const row of list.querySelectorAll('[data-relief-ratings] [data-relief]')) {
+      if (row.dataset.relief === label) row.remove();
     }
   }
   refreshAllChipLists();
@@ -423,14 +550,19 @@ function removeCustom(type, label) {
 
 function refreshAllChipLists() {
   for (const card of list.querySelectorAll('.entry')) {
-    const selectedSymptoms = [...card.querySelectorAll('.rating-row')].map(row => ({
+    const selectedSymptoms = [...card.querySelectorAll('.rating-row[data-symptom]')].map(row => ({
       name: row.dataset.symptom,
-      intensity: Number(row.dataset.intensity) || null,
+      intensity: row.dataset.intensity === undefined ? null : Number(row.dataset.intensity),
     }));
     const selectedCharacteristics = readCharacteristics(card);
+    const selectedRelief = [...card.querySelectorAll('[data-relief-ratings] [data-relief]')].map(row => ({
+      name: row.dataset.relief,
+      effectiveness: row.dataset.effectiveness || null,
+    }));
     const selectedTriggers = readTriggers(card);
     renderSymptomChips(card.querySelector('[data-chips="symptoms"]'), selectedSymptoms);
     renderCharacteristicChips(card.querySelector('[data-chips="characteristics"]'), selectedCharacteristics);
+    renderReliefChips(card.querySelector('[data-chips="relief"]'), selectedRelief);
     renderTriggerChips(card.querySelector('[data-chips="triggers"]'), selectedTriggers);
   }
 }
@@ -449,6 +581,20 @@ function handleRatingClick(event, card) {
   showCardError(card, '');
 }
 
+function handleEffectivenessClick(event, card) {
+  const button = event.target.closest('[data-effectiveness]');
+  if (!button) return;
+  const row = button.closest('[data-relief]');
+  row.dataset.effectiveness = button.dataset.effectiveness;
+  for (const option of row.querySelectorAll('[data-effectiveness]')) {
+    const selected = option === button;
+    option.classList.toggle('on', selected);
+    option.setAttribute('aria-pressed', String(selected));
+  }
+  row.querySelector('.rating-head span:last-child').textContent = button.dataset.effectiveness;
+  showCardError(card, '');
+}
+
 function saveEntry(card) {
   const entry = entries.find(item => item.id === card.dataset.id);
   if (!entry) return;
@@ -459,7 +605,25 @@ function saveEntry(card) {
   const chosen = selectedNames(card);
   const symptoms = readSymptoms(card);
   if (symptoms.length !== chosen.length) {
-    showCardError(card, 'Choose an intensity from 1–10 for every selected symptom.');
+    showCardError(card, 'Choose an intensity from 0–10 for every selected symptom.');
+    return;
+  }
+
+  const ongoing = card.querySelector('[data-field="ongoing"]').checked;
+  let endedAt = null;
+  const endValue = card.querySelector('[data-field="endedAt"]').value;
+  if (!ongoing && endValue) {
+    const end = PainData.fromInput(endValue);
+    if (!end) { showCardError(card, 'Choose a valid end time.'); return; }
+    if (end < date) { showCardError(card, 'The end time cannot be before the start time.'); return; }
+    if (end.getTime() > Date.now()) { showCardError(card, 'The end time cannot be in the future.'); return; }
+    endedAt = end.toISOString();
+  }
+
+  const chosenRelief = card.querySelectorAll('[data-chips="relief"] .chip.on').length;
+  const relief = readRelief(card);
+  if (relief.length !== chosenRelief) {
+    showCardError(card, 'Choose how much every selected relief attempt helped.');
     return;
   }
 
@@ -467,8 +631,12 @@ function saveEntry(card) {
     ...entry,
     at: date.toISOString(),
     updatedAt: new Date().toISOString(),
+    endedAt,
+    ongoing,
     symptoms,
     characteristics: readCharacteristics(card),
+    relief,
+    impact: readImpact(card),
     triggers: readTriggers(card),
     notes: card.querySelector('[data-field="notes"]').value.trim(),
   });
@@ -506,13 +674,43 @@ function deleteEntry(card) {
 
 function addEntry() {
   const now = new Date();
-  const entry = PainData.normalise({ id: PainData.uid(), at: now.toISOString(), updatedAt: now.toISOString(), symptoms: [], characteristics: [], triggers: [], notes: '' });
+  const entry = PainData.normalise({
+    id: PainData.uid(), at: now.toISOString(), updatedAt: now.toISOString(), endedAt: null, ongoing: true,
+    symptoms: [], characteristics: [], relief: [], impact: null, triggers: [], notes: '',
+  });
   if (!persistEntries([entry, ...entries])) return;
   freshEntryIds.add(entry.id);
   openOnRender = entry.id;
   visibleCount = Math.max(visibleCount, 1);
   render();
   requestAnimationFrame(() => list.querySelector(`[data-id="${CSS.escape(entry.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+}
+
+function repeatEntry(card) {
+  const source = entries.find(item => item.id === card.dataset.id);
+  if (!source) return;
+  const now = new Date();
+  const repeated = PainData.normalise({
+    id: PainData.uid(),
+    at: now.toISOString(),
+    updatedAt: now.toISOString(),
+    endedAt: null,
+    ongoing: true,
+    symptoms: source.symptoms.map(item => ({ ...item })),
+    characteristics: [...source.characteristics],
+    relief: [],
+    impact: null,
+    triggers: [...source.triggers],
+    notes: '',
+  });
+  if (!persistEntries([repeated, ...entries])) return;
+  freshEntryIds.add(repeated.id);
+  openOnRender = repeated.id;
+  visibleCount = Math.max(visibleCount, 1);
+  markChanged();
+  render();
+  requestAnimationFrame(() => list.querySelector(`[data-id="${CSS.escape(repeated.id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  toast('Repeated entry ready to update');
 }
 
 function renderTally() {
@@ -584,12 +782,16 @@ function renderStats() {
 
   const facts = statBlock('Overview');
   const values = rows.flatMap(entry => entry.symptoms.map(symptom => symptom.intensity));
+  const completedMinutes = rows.filter(entry => entry.endedAt).map(entry => Math.max(0, (Date.parse(entry.endedAt) - Date.parse(entry.at)) / 60000));
   const dl = document.createElement('dl');
   dl.className = 'stat-facts';
   const pairs = [
     ['Entries', rows.length],
+    ['Ongoing', rows.filter(entry => entry.ongoing).length],
     ['Symptoms rated', values.length],
     ['Average intensity', values.length ? `${(values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1)} / 10` : '—'],
+    ['Average duration', completedMinutes.length
+      ? durationText('1970-01-01T00:00:00.000Z', new Date(completedMinutes.reduce((sum, value) => sum + value, 0) / completedMinutes.length * 60000).toISOString()) : '—'],
   ];
   for (const [term, detail] of pairs) {
     const dt = document.createElement('dt'); dt.textContent = term;
@@ -645,6 +847,39 @@ function renderStats() {
     stats.append(characteristicBlock);
   }
 
+  const impactCounts = new Map();
+  for (const entry of rows) if (entry.impact != null) {
+    const label = IMPACT_LABELS[entry.impact];
+    impactCounts.set(label, (impactCounts.get(label) || 0) + 1);
+  }
+  if (impactCounts.size) {
+    const impactBlock = statBlock('Activity impact');
+    const peak = Math.max(...impactCounts.values());
+    for (const label of IMPACT_LABELS) {
+      const count = impactCounts.get(label) || 0;
+      if (count) impactBlock.append(statRow(label, count, count / peak));
+    }
+    stats.append(impactBlock);
+  }
+
+  const reliefCounts = new Map();
+  for (const entry of rows) for (const item of entry.relief) {
+    const current = reliefCounts.get(item.name) || { count: 0, score: 0 };
+    current.count++;
+    current.score += PainData.reliefLevels.indexOf(item.effectiveness);
+    reliefCounts.set(item.name, current);
+  }
+  if (reliefCounts.size) {
+    const reliefBlock = statBlock('Relief attempts · average help');
+    [...reliefCounts].sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
+      .forEach(([name, value]) => {
+        const average = value.score / value.count;
+        const description = average >= 1.5 ? 'Strong' : average >= 0.5 ? 'Some' : 'None';
+        reliefBlock.append(statRow(name, `${description} · ${value.count}×`, average / 2));
+      });
+    stats.append(reliefBlock);
+  }
+
   const triggerCounts = new Map();
   for (const entry of rows) for (const trigger of entry.triggers) triggerCounts.set(trigger, (triggerCounts.get(trigger) || 0) + 1);
   if (triggerCounts.size) {
@@ -653,6 +888,154 @@ function renderStats() {
     [...triggerCounts].sort((a, b) => b[1] - a[1]).forEach(([name, count]) => triggerBlock.append(statRow(name, count, count / peak)));
     stats.append(triggerBlock);
   }
+}
+
+function selectedReportEntries() {
+  const period = $('reportPeriod').value;
+  const now = Date.now();
+  return entries.filter(entry => {
+    const time = Date.parse(entry.at);
+    if (time > now) return false;
+    if (period === 'all') return true;
+    if (period === '90') return time >= now - 90 * 24 * 60 * 60 * 1000;
+    const month = $('reportMonth').value;
+    return /^\d{4}-\d{2}$/.test(month) && PainData.toInput(new Date(entry.at)).slice(0, 7) === month;
+  });
+}
+
+function reportPeriodLabel() {
+  if ($('reportPeriod').value === 'all') return 'All entries';
+  if ($('reportPeriod').value === '90') return 'Last 90 days';
+  const value = $('reportMonth').value;
+  if (!/^\d{4}-\d{2}$/.test(value)) return 'Selected month';
+  const [year, month] = value.split('-').map(Number);
+  return new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(new Date(year, month - 1, 1));
+}
+
+function entryDetailLines(entry) {
+  return [
+    entry.ongoing ? 'Duration: ongoing' : entry.endedAt ? `Duration: ${durationText(entry.at, entry.endedAt)} · ended ${describe(new Date(entry.endedAt))}` : '',
+    entry.symptoms.length ? `Symptoms: ${entry.symptoms.map(item => `${item.name} ${item.intensity}/10`).join(', ')}` : 'Symptoms: none recorded',
+    entry.characteristics.length ? `Characteristics: ${entry.characteristics.join(', ')}` : '',
+    entry.impact == null ? '' : `Activity impact: ${IMPACT_LABELS[entry.impact]}`,
+    entry.relief.length ? `Relief: ${entry.relief.map(item => `${item.name} (${item.effectiveness.toLowerCase()})`).join(', ')}` : '',
+    entry.triggers.length ? `Possible triggers: ${entry.triggers.join(', ')}` : '',
+    entry.notes ? `Notes: ${entry.notes}` : '',
+  ].filter(Boolean);
+}
+
+function preparePrintReport() {
+  const rows = selectedReportEntries();
+  const error = $('reportError');
+  if ($('reportPeriod').value === 'month' && !$('reportMonth').value) {
+    error.textContent = 'Choose a month first.';
+    error.hidden = false;
+    return;
+  }
+  if (!rows.length) {
+    error.textContent = 'There are no entries in that period.';
+    error.hidden = false;
+    return;
+  }
+  error.hidden = true;
+  const summary = $('printSummary');
+  summary.replaceChildren();
+  const heading = document.createElement('h1');
+  heading.textContent = 'Pain Tracker summary';
+  const period = document.createElement('p');
+  period.textContent = `${reportPeriodLabel()} · ${rows.length} ${rows.length === 1 ? 'entry' : 'entries'}`;
+  const created = document.createElement('p');
+  created.textContent = `Prepared ${dateFmtYear.format(new Date())}`;
+  summary.append(heading, period, created);
+  for (const entry of rows) {
+    const section = document.createElement('section');
+    section.className = 'print-entry';
+    const title = document.createElement('h2');
+    title.textContent = describe(new Date(entry.at));
+    section.append(title);
+    for (const line of entryDetailLines(entry)) {
+      const paragraph = document.createElement('p');
+      paragraph.textContent = line;
+      section.append(paragraph);
+    }
+    summary.append(section);
+  }
+  window.print();
+}
+
+function csvCell(value) {
+  return `"${String(value ?? '').replaceAll('"', '""')}"`;
+}
+
+function exportCsvReport() {
+  const rows = selectedReportEntries();
+  const error = $('reportError');
+  if ($('reportPeriod').value === 'month' && !$('reportMonth').value) {
+    error.textContent = 'Choose a month first.';
+    error.hidden = false;
+    return;
+  }
+  if (!rows.length) {
+    error.textContent = 'There are no entries in that period.';
+    error.hidden = false;
+    return;
+  }
+  error.hidden = true;
+  const header = ['Start', 'End', 'Duration', 'Ongoing', 'Symptoms', 'Pain characteristics', 'Activity impact', 'Relief attempts', 'Possible triggers', 'Notes'];
+  const records = rows.map(entry => [
+    entry.at,
+    entry.endedAt || '',
+    entry.endedAt ? durationText(entry.at, entry.endedAt) : '',
+    entry.ongoing ? 'Yes' : 'No',
+    entry.symptoms.map(item => `${item.name} ${item.intensity}/10`).join('; '),
+    entry.characteristics.join('; '),
+    entry.impact == null ? '' : IMPACT_LABELS[entry.impact],
+    entry.relief.map(item => `${item.name} (${item.effectiveness})`).join('; '),
+    entry.triggers.join('; '),
+    entry.notes,
+  ]);
+  const csv = '\uFEFF' + [header, ...records].map(record => record.map(csvCell).join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `pain-tracker-report-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  toast('CSV download started');
+}
+
+function activeReminderEntry() {
+  return entries.find(entry => entry.ongoing && Date.parse(entry.at) <= Date.now()) || null;
+}
+
+function renderReminderStatus() {
+  const minutes = state.preferences.reminderMinutes;
+  const entry = activeReminderEntry();
+  $('reminderMinutes').value = String(minutes);
+  $('reminderStatus').textContent = minutes
+    ? ` · ${minutes < 60 ? `${minutes} min` : `${minutes / 60} hr`}${entry ? ' · ongoing entry' : ''}` : ' · off';
+}
+
+function notifyReminder(entry) {
+  if (remindedThisSession.has(entry.id)) return;
+  remindedThisSession.add(entry.id);
+  toast('Remember to update your ongoing entry');
+  if ('Notification' in window && Notification.permission === 'granted') {
+    const options = { body: 'Remember to update your ongoing entry.', tag: `pain-entry-${entry.id}`, renotify: false };
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.ready.then(registration => registration.showNotification('Pain Tracker', options))
+        .catch(error => console.warn('Notification unavailable', error));
+    } else new Notification('Pain Tracker', options);
+  }
+}
+
+function scheduleReminder() {
+  clearTimeout(reminderTimer);
+  const minutes = state.preferences.reminderMinutes;
+  const entry = activeReminderEntry();
+  if (!minutes || !entry || remindedThisSession.has(entry.id)) return;
+  const delay = Date.parse(entry.at) + minutes * 60000 - Date.now();
+  reminderTimer = setTimeout(() => notifyReminder(entry), Math.max(0, Math.min(delay, 2147483647)));
 }
 
 function renderBackupStatus() {
@@ -744,11 +1127,21 @@ list.addEventListener('click', event => {
   }
   const action = event.target.closest('[data-act]')?.dataset.act;
   if (action === 'toggle') { setOpen(card, card.querySelector('.entry-body').hidden); return; }
+  if (action === 'repeat') { repeatEntry(card); return; }
   if (action === 'save') { saveEntry(card); return; }
   if (action === 'cancel') { cancelEntry(card); return; }
   if (action === 'delete') { deleteEntry(card); return; }
   if (event.target.closest('[data-chips]')) handleChipClick(event, card);
   else if (event.target.closest('[data-rating]')) handleRatingClick(event, card);
+  else if (event.target.closest('[data-effectiveness]')) handleEffectivenessClick(event, card);
+});
+
+list.addEventListener('change', event => {
+  if (!event.target.matches('[data-field="ongoing"]')) return;
+  const card = event.target.closest('.entry');
+  if (event.target.checked) card.querySelector('[data-field="endedAt"]').value = '';
+  updateEndControl(card);
+  showCardError(card, '');
 });
 
 list.addEventListener('keydown', event => {
@@ -767,10 +1160,31 @@ $('recoveryExport').addEventListener('click', downloadRecovery);
 $('recoveryRetry').addEventListener('click', () => { state = loadState(); entries = state.entries; applyTheme(); render(); });
 $('theme').addEventListener('change', () => {
   const theme = $('theme').value;
-  if (!PainData.themes.includes(theme) || !persistState({ ...state, preferences: { theme } })) return;
+  if (!PainData.themes.includes(theme) || !persistState({ ...state, preferences: { ...state.preferences, theme } })) return;
   applyTheme();
   markChanged();
   renderBackupStatus();
+});
+$('reportPeriod').addEventListener('change', () => {
+  $('reportMonthRow').hidden = $('reportPeriod').value !== 'month';
+  $('reportError').hidden = true;
+});
+$('printReport').addEventListener('click', preparePrintReport);
+$('csvReport').addEventListener('click', exportCsvReport);
+$('reminderMinutes').addEventListener('change', async () => {
+  const minutes = Number($('reminderMinutes').value);
+  if (!PainData.reminderMinutes.includes(minutes)) return;
+  if (minutes && 'Notification' in window && Notification.permission === 'default') {
+    try { await Notification.requestPermission(); }
+    catch (error) { console.warn('Notification permission unavailable', error); }
+  }
+  if (!persistState({ ...state, preferences: { ...state.preferences, reminderMinutes: minutes } })) return;
+  remindedThisSession.clear();
+  markChanged();
+  renderReminderStatus();
+  renderBackupStatus();
+  scheduleReminder();
+  toast(minutes ? 'Reminder preference saved' : 'Reminders turned off');
 });
 
 window.addEventListener('storage', event => {
@@ -778,6 +1192,7 @@ window.addEventListener('storage', event => {
 });
 
 applyTheme();
+$('reportMonth').value = PainData.toInput(new Date()).slice(0, 7);
 render();
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {

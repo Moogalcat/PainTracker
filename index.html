@@ -54,6 +54,25 @@
     <details>
       <summary>Statistics<span class="panel-status" id="statsStatus"></span></summary>
       <div class="stats" id="stats"></div>
+      <div class="report-controls">
+        <h3>Doctor-friendly report</h3>
+        <label for="reportPeriod">Include</label>
+        <select id="reportPeriod">
+          <option value="90">Last 90 days</option>
+          <option value="month">A month</option>
+          <option value="all">All entries</option>
+        </select>
+        <div id="reportMonthRow" hidden>
+          <label for="reportMonth">Month</label>
+          <input id="reportMonth" type="month">
+        </div>
+        <p class="note">Create a printable summary or a spreadsheet-friendly CSV. Nothing is uploaded.</p>
+        <div class="row">
+          <button type="button" class="btn btn-ghost btn-sm" id="printReport">Print report</button>
+          <button type="button" class="btn btn-ghost btn-sm" id="csvReport">Export CSV</button>
+        </div>
+        <p id="reportError" class="error" role="alert" hidden></p>
+      </div>
     </details>
     <details>
       <summary>Appearance</summary>
@@ -63,6 +82,18 @@
         <option value="light">Light</option>
         <option value="dark">Dark</option>
       </select>
+    </details>
+    <details>
+      <summary>Reminders<span class="panel-status" id="reminderStatus"></span></summary>
+      <label for="reminderMinutes">Remind me to update an ongoing entry after</label>
+      <select id="reminderMinutes">
+        <option value="0">Off</option>
+        <option value="30">30 minutes</option>
+        <option value="60">1 hour</option>
+        <option value="120">2 hours</option>
+        <option value="240">4 hours</option>
+      </select>
+      <p class="note">Reminders are shown while the site or installed app is open. Overdue entries are highlighted the next time you open it.</p>
     </details>
     <details class="browser-only">
       <summary>Install this app</summary>
@@ -85,29 +116,56 @@
   </footer>
 
   <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+  <section id="printSummary" aria-label="Printable pain summary"></section>
 
   <template id="entryTpl">
     <li class="card entry">
-      <button type="button" class="entry-head" data-act="toggle" aria-expanded="false">
-        <span class="entry-head-main">
-          <span class="entry-when"></span>
-          <span class="entry-meta"></span>
-          <span class="entry-characteristics"></span>
-          <span class="entry-notes"></span>
-        </span>
-        <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
-      </button>
+      <div class="entry-top">
+        <button type="button" class="entry-head" data-act="toggle" aria-expanded="false">
+          <span class="entry-head-main">
+            <span class="entry-when"></span>
+            <span class="entry-meta"></span>
+            <span class="entry-characteristics"></span>
+            <span class="entry-duration"></span>
+            <span class="entry-impact"></span>
+            <span class="entry-relief"></span>
+            <span class="entry-notes"></span>
+          </span>
+          <svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <button type="button" class="repeat-entry" data-act="repeat" aria-label="Repeat this entry now" title="Repeat this entry now">↻</button>
+      </div>
       <div class="entry-body" hidden>
         <p class="entry-error error" role="alert" hidden></p>
 
         <label class="field-label" for="">Date &amp; time</label>
         <input type="datetime-local" data-field="at" required>
+        <div class="timing-options">
+          <label class="check-line"><input type="checkbox" data-field="ongoing"> Still ongoing</label>
+          <div data-end-row>
+            <label class="field-label">End time <span class="optional">(optional)</span></label>
+            <input type="datetime-local" data-field="endedAt">
+          </div>
+        </div>
 
         <fieldset class="control-group">
           <legend>Symptoms</legend>
           <p class="field-hint">Tap a symptom, then choose its intensity.</p>
           <div class="chips" data-chips="symptoms"></div>
           <div class="ratings" data-ratings></div>
+        </fieldset>
+
+        <fieldset class="control-group impact-group">
+          <legend>Activity impact</legend>
+          <p class="field-hint">How much did this interfere with your day?</p>
+          <div class="chips" data-chips="impact"></div>
+        </fieldset>
+
+        <fieldset class="control-group">
+          <legend>Relief attempts</legend>
+          <p class="field-hint">Select what you tried, then record how much it helped.</p>
+          <div class="chips" data-chips="relief"></div>
+          <div class="relief-ratings" data-relief-ratings></div>
         </fieldset>
 
         <fieldset class="control-group">

@@ -11,21 +11,23 @@ const entry = (overrides = {}) => D.normalise({
 });
 const state = (entries = []) => ({ ...D.empty(), entries });
 
-test('normalise keeps valid symptom ratings and removes case-insensitive duplicates', () => {
+test('normalise keeps valid 0–10 symptom ratings and removes case-insensitive duplicates', () => {
   const result = D.normalise({ at, symptoms: [
+    { name: 'Nausea', intensity: 0 },
     { name: ' Headache ', intensity: 4 },
     { name: 'headache', intensity: 8 },
-    { name: 'Nausea', intensity: 11 },
+    { name: 'Dizziness', intensity: 11 },
   ], characteristics: [' Sharp ', 'sharp'], triggers: [' Stress ', 'stress'] });
-  assert.deepEqual(result.symptoms, [{ name: 'headache', intensity: 8 }]);
+  assert.deepEqual(result.symptoms, [{ name: 'Nausea', intensity: 0 }, { name: 'headache', intensity: 8 }]);
   assert.deepEqual(result.characteristics, ['Sharp']);
   assert.deepEqual(result.triggers, ['Stress']);
 });
 
-test('validation rejects missing names and intensity outside 1–10', () => {
+test('validation accepts 0 and rejects intensity outside 0–10', () => {
   assert.equal(D.valid({ at, symptoms: [{ name: 'Headache', intensity: 1 }] }), true);
+  assert.equal(D.valid({ at, symptoms: [{ name: 'Headache', intensity: 0 }] }), true);
   assert.equal(D.valid({ at, symptoms: [{ name: '', intensity: 5 }] }), false);
-  assert.equal(D.valid({ at, symptoms: [{ name: 'Headache', intensity: 0 }] }), false);
+  assert.equal(D.valid({ at, symptoms: [{ name: 'Headache', intensity: -1 }] }), false);
   assert.equal(D.valid({ at, symptoms: [{ name: 'Headache', intensity: 10.5 }] }), false);
 });
 
@@ -36,19 +38,43 @@ test('strict reading rejects corrupt records and repeated IDs', () => {
 });
 
 test('backup round trip retains custom items and preferences', () => {
-  const original = { ...state([entry({ characteristics: ['Throbbing'] })]), customSymptoms: ['Jaw pain'],
-    customCharacteristics: ['Heavy'], customTriggers: ['Stress'], preferences: { theme: 'dark' } };
+  const original = { ...state([entry({ characteristics: ['Throbbing'], relief: [{ name: 'Heat', effectiveness: 'Strong' }], impact: 2 })]), customSymptoms: ['Jaw pain'],
+    customCharacteristics: ['Heavy'], customRelief: ['Tea'], customTriggers: ['Stress'], preferences: { theme: 'dark', reminderMinutes: 60 } };
   const restored = D.parse(JSON.parse(JSON.stringify(original)), true);
   assert.deepEqual(restored.entries[0].symptoms, [{ name: 'Headache', intensity: 7 }]);
   assert.deepEqual(restored.entries[0].characteristics, ['Throbbing']);
+  assert.deepEqual(restored.entries[0].relief, [{ name: 'Heat', effectiveness: 'Strong' }]);
+  assert.equal(restored.entries[0].impact, 2);
   assert.deepEqual(restored.customSymptoms, ['Jaw pain']);
   assert.deepEqual(restored.customCharacteristics, ['Heavy']);
+  assert.deepEqual(restored.customRelief, ['Tea']);
   assert.equal(restored.preferences.theme, 'dark');
+  assert.equal(restored.preferences.reminderMinutes, 60);
 });
 
-test('older entries without pain characteristics migrate to an empty selection', () => {
+test('older entries migrate with safe defaults for new tracking fields', () => {
   const restored = D.parse([{ id: 'old', at, symptoms: [], triggers: [], notes: '' }], true);
   assert.deepEqual(restored.entries[0].characteristics, []);
+  assert.deepEqual(restored.entries[0].relief, []);
+  assert.equal(restored.entries[0].impact, null);
+  assert.equal(restored.entries[0].endedAt, null);
+  assert.equal(restored.entries[0].ongoing, false);
+});
+
+test('duration, activity impact, and relief effectiveness are validated', () => {
+  const complete = { at, endedAt: '2026-09-13T12:00:00.000Z', ongoing: false, impact: 3,
+    relief: [{ name: 'Rest', effectiveness: 'Some' }], symptoms: [] };
+  assert.equal(D.valid(complete), true);
+  assert.equal(D.valid({ ...complete, endedAt: '2026-09-13T09:00:00.000Z' }), false);
+  assert.equal(D.valid({ ...complete, impact: 4 }), false);
+  assert.equal(D.valid({ ...complete, relief: [{ name: 'Rest', effectiveness: 'A lot' }] }), false);
+  const ongoing = D.normalise({ ...complete, ongoing: true });
+  assert.equal(ongoing.endedAt, null);
+});
+
+test('invalid reminder preferences are rejected and old preferences default to off', () => {
+  assert.throws(() => D.parse({ entries: [], preferences: { theme: 'dark', reminderMinutes: 15 } }, true));
+  assert.equal(D.parse({ entries: [], preferences: { theme: 'light' } }, true).preferences.reminderMinutes, 0);
 });
 
 test('a newer copy of an entry updates once and repeated import is idempotent', () => {
