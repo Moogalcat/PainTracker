@@ -278,6 +278,7 @@ summary { padding: 16px 0; color: var(--text-dim); font-size: .92rem; font-weigh
 .stat-track { height: 8px; overflow: hidden; border: 1px solid var(--line); border-radius: 99px; background: var(--surface-2); }
 .stat-bar { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
 .stat-count { text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
+.before-records .stat-track { background: transparent; border-style: dashed; }
 
 .toast {
   position: fixed;

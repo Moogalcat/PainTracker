@@ -106,6 +106,7 @@ function markChanged() {
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 const dateFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 const dateFmtYear = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+const monthFmt = new Intl.DateTimeFormat(undefined, { month: 'short' });
 
 function describe(date) {
   const now = new Date();
@@ -513,24 +514,45 @@ function statRow(label, value, fraction, suffix = '') {
   return row;
 }
 
+function monthlyCounts(rows, months = 6) {
+  const now = new Date();
+  const first = rows.length ? new Date(Math.min(...rows.map(entry => Date.parse(entry.at)))) : now;
+  const firstMonth = new Date(first.getFullYear(), first.getMonth(), 1);
+  const result = [];
+  for (let offset = months - 1; offset >= 0; offset--) {
+    const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    const count = rows.filter(entry => {
+      const entryDate = new Date(entry.at);
+      return entryDate.getFullYear() === date.getFullYear() && entryDate.getMonth() === date.getMonth();
+    }).length;
+    result.push({
+      label: `${monthFmt.format(date)}${offset === 0 ? ' (so far)' : ''}`,
+      count,
+      before: date < firstMonth,
+    });
+  }
+  return result;
+}
+
 function renderStats() {
   const stats = $('stats');
+  const rows = entries.filter(entry => Date.parse(entry.at) <= Date.now());
   stats.replaceChildren();
-  $('statsStatus').textContent = entries.length ? ` · ${entries.length} total` : '';
-  if (!entries.length) {
+  $('statsStatus').textContent = rows.length ? ` · ${rows.length} total` : '';
+  if (!rows.length) {
     const note = document.createElement('p');
     note.className = 'note';
-    note.textContent = 'Statistics will appear after you save an entry.';
+    note.textContent = entries.length ? 'Nothing to summarise yet because every entry is in the future.' : 'Statistics will appear after you save an entry.';
     stats.append(note);
     return;
   }
 
   const facts = statBlock('Overview');
-  const values = entries.flatMap(entry => entry.symptoms.map(symptom => symptom.intensity));
+  const values = rows.flatMap(entry => entry.symptoms.map(symptom => symptom.intensity));
   const dl = document.createElement('dl');
   dl.className = 'stat-facts';
   const pairs = [
-    ['Entries', entries.length],
+    ['Entries', rows.length],
     ['Symptoms rated', values.length],
     ['Average intensity', values.length ? `${(values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1)} / 10` : '—'],
   ];
@@ -542,8 +564,25 @@ function renderStats() {
   facts.append(dl);
   stats.append(facts);
 
+  const months = monthlyCounts(rows);
+  const monthPeak = Math.max(...months.map(month => month.count), 1);
+  const monthBlock = statBlock('Last six months');
+  for (const month of months) {
+    const row = statRow(month.label, month.before ? '—' : String(month.count), month.before ? 0 : month.count / monthPeak);
+    if (month.before) {
+      row.classList.add('before-records');
+      row.setAttribute('aria-label', `${month.label}: before first record`);
+    }
+    monthBlock.append(row);
+  }
+  const monthNote = document.createElement('p');
+  monthNote.className = 'note';
+  monthNote.textContent = '— means before your first record. Counts describe logged entries; an empty month does not establish that no pain occurred.';
+  monthBlock.append(monthNote);
+  stats.append(monthBlock);
+
   const symptoms = new Map();
-  for (const entry of entries) for (const symptom of entry.symptoms) {
+  for (const entry of rows) for (const symptom of entry.symptoms) {
     const key = symptom.name;
     const current = symptoms.get(key) || { count: 0, total: 0 };
     current.count++; current.total += symptom.intensity; symptoms.set(key, current);
@@ -560,7 +599,7 @@ function renderStats() {
   stats.append(symptomBlock);
 
   const triggerCounts = new Map();
-  for (const entry of entries) for (const trigger of entry.triggers) triggerCounts.set(trigger, (triggerCounts.get(trigger) || 0) + 1);
+  for (const entry of rows) for (const trigger of entry.triggers) triggerCounts.set(trigger, (triggerCounts.get(trigger) || 0) + 1);
   if (triggerCounts.size) {
     const triggerBlock = statBlock('Possible triggers');
     const peak = Math.max(...triggerCounts.values());

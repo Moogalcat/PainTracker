@@ -9,7 +9,7 @@ A small, private, installable pain diary inspired by the companion Migraine Log 
 - Custom symptom chips
 - A tappable 1–10 intensity scale for every selected symptom
 - User-defined possible triggers
-- Notes, history, basic statistics, light/dark themes, JSON backup and restore
+- Notes, history, six-month activity charts, statistics, light/dark themes, JSON backup and restore
 - Offline support through a service worker
 
 ## Run locally
