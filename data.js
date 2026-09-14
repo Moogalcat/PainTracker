@@ -220,8 +220,15 @@ const PainData = (() => {
     return entry.ongoing ? 'ongoing' : entry.endedAt ? 'ended' : 'unknown';
   }
 
+  // Spreadsheets run cells starting with these characters as formulas, so such text is marked as plain text.
+  function csvCell(value) {
+    const text = String(value ?? '');
+    const safe = /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;
+    return `"${safe.replaceAll('"', '""')}"`;
+  }
+
   return { backupVersion, themes, reliefLevels, reminderMinutes, unknownMedicationName,
-    uid, uniqueLabels, valid, normalise, contentKey, empty, parse, merge, toInput, fromInput, endState };
+    uid, uniqueLabels, valid, normalise, contentKey, empty, parse, merge, toInput, fromInput, endState, csvCell };
 })();
 
 if (typeof module !== 'undefined') module.exports = PainData;

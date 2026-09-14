@@ -275,3 +275,13 @@ test('first sync with an account combines custom lists; afterwards the newest se
   assert.deepEqual(S.chooseSettings(local, 0, cloud, 1000, false).customMedications, []);
   assert.deepEqual(S.chooseSettings(local, 2000, cloud, 1000, false).customSymptoms, ['Jaw pain']);
 });
+
+test('CSV cells are quoted and cannot run as spreadsheet formulas', () => {
+  assert.equal(D.csvCell('Headache 7/10'), '"Headache 7/10"');
+  assert.equal(D.csvCell('said "ouch"'), '"said ""ouch"""');
+  assert.equal(D.csvCell(null), '""');
+  assert.equal(D.csvCell('=HYPERLINK("http://example.com")'), '"\'=HYPERLINK(""http://example.com"")"');
+  for (const risky of ['+1', '-2+3', '@SUM(A1)', '\t=1', '\r=1']) {
+    assert.ok(D.csvCell(risky).startsWith('"\''), risky);
+  }
+});

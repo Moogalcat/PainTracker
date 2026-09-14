@@ -1306,10 +1306,6 @@ function preparePrintReport() {
   window.print();
 }
 
-function csvCell(value) {
-  return `"${String(value ?? '').replaceAll('"', '""')}"`;
-}
-
 function exportCsvReport() {
   const rows = selectedReportEntries();
   const error = $('reportError');
@@ -1339,7 +1335,7 @@ function exportCsvReport() {
     entry.triggers.join('; '),
     entry.notes,
   ]);
-  const csv = '\uFEFF' + [header, ...records].map(record => record.map(csvCell).join(',')).join('\r\n');
+  const csv = '\uFEFF' + [header, ...records].map(record => record.map(PainData.csvCell).join(',')).join('\r\n');
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
   const link = document.createElement('a');
   link.href = URL.createObjectURL(blob);
