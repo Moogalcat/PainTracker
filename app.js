@@ -22,7 +22,6 @@ const BUILT_IN_CHARACTERISTICS = [
 const BUILT_IN_RELIEF = ['Medication', 'Rest', 'Heat', 'Cold', 'Stretching', 'Hydration', 'Food', 'Movement'];
 const MEDICATION = 'Medication';
 const DEFAULT_MEDICATION_DOSES = ['200 mg', '500 mg', '1000 mg'];
-const REMOVED_DEFAULT_MEDICATIONS = new Set(['paracetamol']);
 const BUILT_IN_MEDICATIONS = {
   Ibuprofen: DEFAULT_MEDICATION_DOSES,
 };
@@ -475,12 +474,11 @@ function makeMedicationPanel(medications) {
   const selectedNames = new Set(medications.map(item => item.name.toLocaleLowerCase()));
   const medicationNames = PainData.uniqueLabels([
     ...Object.keys(BUILT_IN_MEDICATIONS),
-    ...state.customMedications.filter(name => !REMOVED_DEFAULT_MEDICATIONS.has(name.toLocaleLowerCase())),
+    ...state.customMedications,
     ...medications.map(item => item.name),
   ]).filter(name => name !== PainData.unknownMedicationName);
   for (const name of medicationNames) {
-    const custom = state.customMedications.includes(name)
-      && !REMOVED_DEFAULT_MEDICATIONS.has(name.toLocaleLowerCase());
+    const custom = state.customMedications.includes(name);
     const rendered = makeChip(name, selectedNames.has(name.toLocaleLowerCase()), custom);
     const choice = rendered.matches('.chip') ? rendered : rendered.querySelector('.chip');
     choice.dataset.medAction = 'select';

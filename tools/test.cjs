@@ -25,6 +25,17 @@ test('normalise keeps valid 0–10 symptom ratings and removes case-insensitive 
   assert.deepEqual(result.triggers, ['Stress']);
 });
 
+test('older Stomach-ache symptoms read as Stomachache without syncing as a change', () => {
+  const old = { id: 'old-spelling', at, updatedAt: at, symptoms: [{ name: 'Stomach-ache', intensity: 5 }, { name: 'Headache', intensity: 3 }] };
+  const restored = D.parse(JSON.parse(JSON.stringify({ entries: [old] })), true);
+  assert.deepEqual(restored.entries[0].symptoms, [{ name: 'Stomachache', intensity: 5 }, { name: 'Headache', intensity: 3 }]);
+  assert.deepEqual(D.normalise({ at, symptoms: [{ name: 'stomach-ache', intensity: 2 }, { name: 'Stomachache', intensity: 6 }] }).symptoms,
+    [{ name: 'Stomachache', intensity: 6 }]);
+  const synced = S.reconcileEntries(state(restored.entries), [{ kind: 'entry', id: old.id, modifiedAt: at, deleted: false, entry: old }]);
+  assert.equal(synced.changed, false);
+  assert.deepEqual(synced.uploads, []);
+});
+
 test('validation accepts 0 and rejects intensity outside 0–10', () => {
   assert.equal(D.valid({ at, symptoms: [{ name: 'Headache', intensity: 1 }] }), true);
   assert.equal(D.valid({ at, symptoms: [{ name: 'Headache', intensity: 0 }] }), true);

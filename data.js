@@ -7,6 +7,8 @@ const PainData = (() => {
   const reliefLevels = ['None', 'Some', 'Strong'];
   const reminderMinutes = [0, 30, 60, 120, 240, 480, 960];
   const unknownMedicationName = 'Medication (name not recorded)';
+  // Symptoms whose built-in spelling changed, so older entries match the current chip.
+  const renamedSymptoms = new Map([['stomach-ache', 'Stomachache']]);
   // Matches the notes cap in firestore.rules and the notes editor's maxlength.
   const notesLimit = 50000;
   const isDate = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
@@ -54,7 +56,8 @@ const PainData = (() => {
   function normalise(entry) {
     const symptomMap = new Map();
     for (const item of entry.symptoms || []) {
-      const name = String(item.name).trim();
+      const trimmed = String(item.name).trim();
+      const name = renamedSymptoms.get(trimmed.toLocaleLowerCase()) || trimmed;
       const key = name.toLocaleLowerCase();
       if (name && isIntensity(item.intensity)) symptomMap.set(key, { name, intensity: item.intensity ?? null });
     }
