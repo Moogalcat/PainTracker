@@ -21,6 +21,8 @@ let activeUser;
 let stopChanges;
 let baseline = syncBridge?.getState();
 let snapshotQueue = Promise.resolve();
+let serverSynced = false;
+let signOutMessage = '';
 const removalRequested = new Set();
 
 function setSyncStatus(value) {
@@ -51,11 +53,12 @@ function loadSyncMeta() {
     const tombstones = value && typeof value.tombstones === 'object' ? value.tombstones : {};
     return {
       deviceId: typeof value.deviceId === 'string' && value.deviceId ? value.deviceId : PainData.uid(),
+      accountUid: typeof value.accountUid === 'string' && value.accountUid ? value.accountUid : null,
       settingsModifiedAt: Number.isFinite(value.settingsModifiedAt) ? value.settingsModifiedAt : 0,
       tombstones: Object.fromEntries(Object.entries(tombstones).filter(([, time]) => Number.isFinite(time))),
     };
   } catch {
-    return { deviceId: PainData.uid(), settingsModifiedAt: 0, tombstones: {} };
+    return { deviceId: PainData.uid(), accountUid: null, settingsModifiedAt: 0, tombstones: {} };
   }
 }
 
@@ -219,6 +222,7 @@ async function applySnapshot(snapshot) {
   saveSyncMeta();
 
   if (!snapshot.metadata.fromCache) {
+    serverSynced = true;
     appendChanges(uploads);
     removeSupersededRecords(records);
   }
@@ -229,8 +233,56 @@ async function applySnapshot(snapshot) {
     : snapshot.metadata.fromCache && !navigator.onLine ? 'Offline' : 'Synced');
 }
 
-function watchUser(user) {
+function stopWatching() {
   if (stopChanges) { stopChanges(); stopChanges = undefined; }
+  activeUser = undefined;
+  serverSynced = false;
+}
+
+function resetSyncMeta(accountUid) {
+  syncMeta = { deviceId: syncMeta.deviceId, accountUid, settingsModifiedAt: 0, tombstones: {} };
+  saveSyncMeta();
+}
+
+// Returns whether this account may sync with the diary on this device.
+function claimDiary(user) {
+  const current = syncBridge.getState();
+  const action = PainSyncData.signInAction(syncMeta.accountUid, user.uid, current);
+  if (action === 'sync') return true;
+  if (action === 'link') {
+    syncMeta.accountUid = user.uid;
+    saveSyncMeta();
+    return true;
+  }
+  if (action === 'ask' && !window.confirm('This device has a diary from a different Google account.\n\n'
+    + `Remove it from this device and load the diary for ${user.email || 'this account'} instead? `
+    + 'Changes made while signed out exist only on this device, so export a backup first if you need them.\n\n'
+    + 'Choose Cancel to sign out and keep it.')) {
+    signOutMessage = 'Signed out. This device’s diary was not added to that account. To move it, export a backup and import it after signing in.';
+    return false;
+  }
+  const cleared = action === 'ask' ? syncBridge.clearDiary()
+    : !current.deletedIds.length || syncBridge.applyState({ ...current, deletedIds: [] });
+  if (!cleared) {
+    signOutMessage = 'Signed out. The diary on this device could not be replaced, so nothing was changed.';
+    return false;
+  }
+  resetSyncMeta(user.uid);
+  return true;
+}
+
+function watchUser(user) {
+  stopWatching();
+  if (user && !syncBridge.isCurrent()) {
+    setSyncStatus('Paused');
+    showSyncResult('The diary changed in another tab. Reload this tab to sync.', true);
+    return;
+  }
+  if (user && !claimDiary(user)) {
+    setSyncStatus('Signing out');
+    firebaseApi.signOut(auth).catch(error => showSyncResult(friendlyError(error), true));
+    return;
+  }
   activeUser = user;
   baseline = syncBridge.getState();
   syncSignIn.hidden = !!user;
@@ -239,7 +291,8 @@ function watchUser(user) {
   syncAccount.textContent = user ? `Signed in as ${user.email || 'Google user'}` : '';
   if (!user) {
     setSyncStatus('Off');
-    showSyncResult('');
+    showSyncResult(signOutMessage);
+    signOutMessage = '';
     return;
   }
   setSyncStatus(navigator.onLine ? 'Connecting' : 'Offline');
@@ -258,6 +311,39 @@ function watchUser(user) {
     setSyncStatus(navigator.onLine ? 'Error' : 'Offline');
     showSyncResult(friendlyError(error), true);
   });
+}
+
+async function cloudHasEverything() {
+  if (!serverSynced || !navigator.onLine) return false;
+  let timer;
+  const timeout = new Promise(resolve => { timer = setTimeout(resolve, 10000, false); });
+  try { return await Promise.race([firebaseApi.waitForPendingWrites(db).then(() => true), timeout]); }
+  catch { return false; }
+  finally { clearTimeout(timer); }
+}
+
+async function signOutClicked() {
+  const user = activeUser;
+  const removeDiary = !!user && PainSyncData.hasDiary(syncBridge.getState())
+    && window.confirm('Also remove the diary from this device? It stays saved in your Google account.');
+  syncSignOut.disabled = true;
+  try {
+    if (removeDiary) {
+      if (!await cloudHasEverything()) {
+        showSyncResult('You are still signed in because some changes have not reached your account yet. Try again when sync shows Synced, or export a backup first.', true);
+        return;
+      }
+      stopWatching();
+      if (!syncBridge.clearDiary()) { watchUser(user); return; }
+      resetSyncMeta(null);
+      signOutMessage = 'Signed out and removed the diary from this device.';
+    }
+    await firebaseApi.signOut(auth);
+  } catch (error) {
+    signOutMessage = '';
+    showSyncResult(friendlyError(error), true);
+    if (auth.currentUser && !activeUser) watchUser(auth.currentUser);
+  } finally { syncSignOut.disabled = false; }
 }
 
 async function startSync() {
@@ -286,12 +372,7 @@ async function startSync() {
     }
     finally { syncSignIn.disabled = false; }
   });
-  syncSignOut.addEventListener('click', async () => {
-    syncSignOut.disabled = true;
-    try { await authApi.signOut(auth); }
-    catch (error) { showSyncResult(friendlyError(error), true); }
-    finally { syncSignOut.disabled = false; }
-  });
+  syncSignOut.addEventListener('click', signOutClicked);
   authApi.onAuthStateChanged(auth, watchUser, error => {
     setSyncStatus('Error');
     showSyncResult(friendlyError(error), true);

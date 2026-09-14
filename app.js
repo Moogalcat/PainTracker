@@ -1672,6 +1672,10 @@ render();
 
 window.PainTrackerAppSync = {
   getState: () => JSON.parse(JSON.stringify(state)),
+  isCurrent() {
+    try { return localStorage.getItem(KEY) === lastRaw; }
+    catch (error) { console.error(error); return false; }
+  },
   applyState(value) {
     try {
       const parsed = PainData.parse(value, true);
@@ -1683,6 +1687,15 @@ window.PainTrackerAppSync = {
       console.error('Cloud state could not be applied', error);
       return false;
     }
+  },
+  clearDiary() {
+    if (!persistState(PainData.empty(), false, true)) return false;
+    writeJSON(META_KEY, { pending: 0, lastExportAt: null });
+    freshEntryIds.clear();
+    visibleCount = INITIAL_VISIBLE;
+    applyTheme();
+    render();
+    return true;
   },
 };
 

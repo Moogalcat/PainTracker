@@ -160,7 +160,21 @@ const PainSyncData = (() => {
       .map(record => record.cloudId);
   }
 
-  return { entryTime, isEntryChange, dedupeEntries, reconcileEntries, readSettings, supersededRecords };
+  function hasDiary(state) {
+    return state.entries.length > 0 || [state.customSymptoms, state.customCharacteristics, state.customRelief,
+      state.customMedications, state.customTriggers].some(list => list.length > 0);
+  }
+
+  // How signing in treats this device's diary. The device may be shared, so a diary already linked to
+  // another account is never merged into this one without asking.
+  function signInAction(linkedUid, uid, state) {
+    if (linkedUid === uid) return 'sync';
+    if (!linkedUid) return 'link';
+    return hasDiary(state) ? 'ask' : 'switch';
+  }
+
+  return { entryTime, isEntryChange, dedupeEntries, reconcileEntries, readSettings, supersededRecords,
+    hasDiary, signInAction };
 })();
 
 if (typeof module !== 'undefined') module.exports = PainSyncData;

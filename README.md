@@ -36,7 +36,7 @@ Then open `http://localhost:8080`.
 node --test tools/test.cjs
 ```
 
-The diary remains available in browser `localStorage`, including while offline. When Firebase sync is enabled and the user signs in, saved entries, custom options, theme, and reminder preference are also stored in that user's private Firestore path and changes upload after reconnecting.
+The diary remains available in browser `localStorage`, including while offline. When Firebase sync is enabled and the user signs in, saved entries, custom options, theme, and reminder preference are also stored in that user's private Firestore path and changes upload after reconnecting. A device's diary stays linked to the Google account it first synced with: signing in with a different account asks before replacing it and never merges it into that account, and signing out offers to remove the diary from the device once every change has synced.
 
 ## Firebase setup
 

@@ -251,3 +251,13 @@ test('sync keeps only the newest confirmed readable record for each entry and fo
   ];
   assert.deepEqual(S.supersededRecords(records), ['edit-old', 'deleted-content', 'restored-marker', 'settings-old']);
 });
+
+test('signing in never merges a diary linked to another account without asking', () => {
+  const withEntry = state([entry()]);
+  assert.equal(S.signInAction('account-a', 'account-a', withEntry), 'sync');
+  assert.equal(S.signInAction(null, 'account-a', withEntry), 'link');
+  assert.equal(S.signInAction('account-a', 'account-b', withEntry), 'ask');
+  assert.equal(S.signInAction('account-a', 'account-b', { ...state(), customMedications: ['Naproxen'] }), 'ask');
+  assert.equal(S.signInAction('account-a', 'account-b', { ...state(), deletedIds: ['gone'] }), 'switch');
+  assert.equal(S.hasDiary(state()), false);
+});
