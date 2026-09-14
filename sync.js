@@ -274,7 +274,11 @@ async function startSync() {
     setSyncStatus('Signing in');
     showSyncResult('');
     try { await authApi.signInWithPopup(auth, new authApi.GoogleAuthProvider()); }
-    catch (error) { setSyncStatus('Off'); showSyncResult(friendlyError(error), true); }
+    catch (error) {
+      console.error('Google sign-in failed', error);
+      setSyncStatus('Off');
+      showSyncResult(friendlyError(error), true);
+    }
     finally { syncSignIn.disabled = false; }
   });
   syncSignOut.addEventListener('click', async () => {
