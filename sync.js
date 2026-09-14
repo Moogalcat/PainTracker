@@ -12,6 +12,7 @@ const syncResult = document.getElementById('syncResult');
 const SYNC_META_KEY = 'pain-tracker-sync-v1';
 const FIREBASE_VERSION = '12.18.0';
 const CHANGE_GENERATION = 1;
+const DELETE_BATCH_SIZE = 400;
 
 let firebaseApi;
 let auth;
@@ -20,6 +21,7 @@ let activeUser;
 let stopChanges;
 let baseline = syncBridge?.getState();
 let snapshotQueue = Promise.resolve();
+const removalRequested = new Set();
 
 function setSyncStatus(value) {
   syncStatus.textContent = ` · ${value}`;
@@ -139,6 +141,20 @@ function appendChanges(records) {
   });
 }
 
+// Deleted entries keep only their content-free deletion record in the cloud.
+function removeSupersededContent(records) {
+  const cloudIds = PainSyncData.supersededContent(records).filter(id => !removalRequested.has(id));
+  const changes = firebaseApi.collection(db, 'users', activeUser.uid, 'changes');
+  for (let start = 0; start < cloudIds.length; start += DELETE_BATCH_SIZE) {
+    const batch = firebaseApi.writeBatch(db);
+    for (const cloudId of cloudIds.slice(start, start + DELETE_BATCH_SIZE)) {
+      removalRequested.add(cloudId);
+      batch.delete(firebaseApi.doc(changes, cloudId));
+    }
+    batch.commit().catch(error => console.warn('Deleted entry contents could not be removed from the cloud', error));
+  }
+}
+
 function localChanges(previous, current) {
   baseline = clone(current);
   if (!activeUser || !previous) return;
@@ -178,7 +194,8 @@ window.PainTrackerSyncStateChanged = () => {
 
 async function applySnapshot(snapshot) {
   if (!activeUser) return;
-  const records = snapshot.docs.map(item => ({ ...item.data(), cloudId: item.id }));
+  const records = snapshot.docs.map(item => ({ ...item.data(), cloudId: item.id,
+    confirmed: !item.metadata.hasPendingWrites }));
   const remoteEntries = newest(records.filter(PainSyncData.isEntryChange), record => record.id);
   const remoteSettings = newest(records.filter(record => record.kind === 'settings'), () => 'settings')[0];
   const current = syncBridge.getState();
@@ -219,7 +236,10 @@ async function applySnapshot(snapshot) {
   baseline = clone(next);
   saveSyncMeta();
 
-  if (!snapshot.metadata.fromCache) appendChanges(uploads);
+  if (!snapshot.metadata.fromCache) {
+    appendChanges(uploads);
+    removeSupersededContent(records);
+  }
   if (reconciled.invalid) showSyncResult(`${reconciled.invalid} unreadable cloud record${reconciled.invalid === 1 ? '' : 's'} were ignored.`, true);
   else if (remoteSettings && !cloudSettings) showSyncResult('Unreadable cloud settings were ignored.', true);
   else if (!snapshot.metadata.hasPendingWrites) showSyncResult('');
