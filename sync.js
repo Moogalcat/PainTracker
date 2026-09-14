@@ -3,6 +3,7 @@
 
 const syncBridge = window.PainTrackerAppSync;
 const syncConfig = window.PAIN_FIREBASE_CONFIG;
+const appCheckSiteKey = typeof window.PAIN_APP_CHECK_SITE_KEY === 'string' ? window.PAIN_APP_CHECK_SITE_KEY.trim() : '';
 const syncStatus = document.getElementById('syncStatus');
 const syncDescription = document.getElementById('syncDescription');
 const syncAccount = document.getElementById('syncAccount');
@@ -23,6 +24,7 @@ let baseline = syncBridge?.getState();
 let snapshotQueue = Promise.resolve();
 let serverSynced = false;
 let signOutMessage = '';
+let watchAttempt = 0;
 const removalRequested = new Set();
 
 function setSyncStatus(value) {
@@ -39,7 +41,7 @@ function friendlyError(error) {
   if (error?.code === 'auth/unauthorized-domain') return 'This site address must be added to Firebase Authentication’s authorized domains.';
   if (error?.code === 'auth/popup-closed-by-user') return 'Sign-in was cancelled.';
   if (error?.code === 'auth/popup-blocked') return 'The browser blocked the sign-in window. Allow pop-ups for this site and try again.';
-  if (error?.code === 'permission-denied') return 'Firebase denied access. Check that the supplied Firestore rules have been deployed.';
+  if (error?.code === 'permission-denied') return 'Firebase denied access. This Google account may not be allowed to sync, or the Firestore rules have not been deployed.';
   return navigator.onLine ? 'Sync could not connect. Try again in a moment.' : 'You are offline. Changes will sync after reconnecting.';
 }
 
@@ -271,8 +273,29 @@ function claimDiary(user) {
   return true;
 }
 
-function watchUser(user) {
+// Signing in does not grant sync: the rules only admit allowed accounts. Checked before the diary is touched.
+async function mayAccess(user) {
+  if (!navigator.onLine) return true;
+  try {
+    await firebaseApi.getDocs(firebaseApi.query(firebaseApi.collection(db, 'users', user.uid, 'changes'), firebaseApi.limit(1)));
+    return true;
+  } catch (error) {
+    return error?.code !== 'permission-denied';
+  }
+}
+
+async function watchUser(user) {
+  const attempt = ++watchAttempt;
   stopWatching();
+  if (user) setSyncStatus(navigator.onLine ? 'Connecting' : 'Offline');
+  const allowed = !user || await mayAccess(user);
+  if (attempt !== watchAttempt) return;
+  if (!allowed) {
+    signOutMessage = 'Signed out. This Google account is not allowed to sync.';
+    setSyncStatus('Signing out');
+    firebaseApi.signOut(auth).catch(error => showSyncResult(friendlyError(error), true));
+    return;
+  }
   if (user && !syncBridge.isCurrent()) {
     setSyncStatus('Paused');
     showSyncResult('The diary changed in another tab. Reload this tab to sync.', true);
@@ -351,10 +374,15 @@ async function startSync() {
   setSyncStatus('Loading');
   showSyncResult('');
   const base = `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}`;
-  const [appApi, authApi, firestoreApi] = await Promise.all([
+  const [appApi, authApi, firestoreApi, appCheckApi] = await Promise.all([
     import(`${base}/firebase-app.js`), import(`${base}/firebase-auth.js`), import(`${base}/firebase-firestore.js`),
+    appCheckSiteKey ? import(`${base}/firebase-app-check.js`) : null,
   ]);
   const firebaseApp = appApi.initializeApp(syncConfig);
+  if (appCheckApi) {
+    appCheckApi.initializeAppCheck(firebaseApp, {
+      provider: new appCheckApi.ReCaptchaV3Provider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
+  }
   auth = authApi.getAuth(firebaseApp);
   await authApi.setPersistence(auth, authApi.browserLocalPersistence);
   db = firestoreApi.getFirestore(firebaseApp);

@@ -2,10 +2,72 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Only verified Google accounts listed in config/access (field "emails", lowercase) can sync.
+    function canSync(userId) {
+      return request.auth != null && request.auth.uid == userId
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() in get(/databases/$(database)/documents/config/access).data.emails;
+    }
+
+    function isText(value, maxLength) {
+      return value is string && value.size() <= maxLength;
+    }
+
+    function isOptionalTime(value) {
+      return value == null || isText(value, 32);
+    }
+
+    function isShortList(value) {
+      return value is list && value.size() <= 200;
+    }
+
+    // Rules cannot look inside list items, so these checks cap record shape, text lengths and list sizes.
+    function isEntry(entry, id) {
+      return entry is map
+        && entry.keys().hasOnly(['id', 'at', 'updatedAt', 'endedAt', 'ongoing', 'notes', 'symptoms',
+          'characteristics', 'relief', 'medications', 'impact', 'triggers', 'knownCauses'])
+        && entry.keys().hasAll(['id', 'at', 'updatedAt', 'endedAt', 'ongoing', 'notes', 'symptoms',
+          'characteristics', 'relief', 'medications', 'impact', 'triggers', 'knownCauses'])
+        && entry.id == id
+        && isText(entry.at, 32) && isOptionalTime(entry.updatedAt) && isOptionalTime(entry.endedAt)
+        && entry.ongoing is bool
+        && isText(entry.notes, 50000)
+        && isShortList(entry.symptoms) && isShortList(entry.characteristics) && isShortList(entry.relief)
+        && isShortList(entry.medications) && isShortList(entry.triggers) && isShortList(entry.knownCauses)
+        && (entry.impact == null || (entry.impact is int && entry.impact >= 0 && entry.impact <= 3));
+    }
+
+    function isEntryChange(data) {
+      return data.keys().hasOnly(['kind', 'id', 'deleted', 'modifiedAt', 'entry', 'generation', 'deviceId'])
+        && data.kind == 'entry' && isText(data.id, 128) && data.deleted == false && isEntry(data.entry, data.id);
+    }
+
+    function isDeletion(data) {
+      return data.keys().hasOnly(['kind', 'id', 'deleted', 'modifiedAt', 'generation', 'deviceId'])
+        && data.kind == 'entry' && isText(data.id, 128) && data.deleted == true;
+    }
+
+    function isSettings(data) {
+      return data.keys().hasOnly(['kind', 'modifiedAt', 'customSymptoms', 'customCharacteristics', 'customRelief',
+          'customMedications', 'customTriggers', 'preferences', 'generation', 'deviceId'])
+        && data.kind == 'settings'
+        && isShortList(data.customSymptoms) && isShortList(data.customCharacteristics)
+        && isShortList(data.customRelief) && isShortList(data.customMedications) && isShortList(data.customTriggers)
+        && data.preferences is map && data.preferences.keys().hasOnly(['theme', 'reminderMinutes'])
+        && data.preferences.theme in ['system', 'light', 'dark']
+        && data.preferences.reminderMinutes in [0, 30, 60, 120, 240, 480, 960];
+    }
+
+    function isChange(data) {
+      return data.generation == 1 && isText(data.deviceId, 64) && isText(data.modifiedAt, 32)
+        && (isEntryChange(data) || isDeletion(data) || isSettings(data));
+    }
+
     match /users/{userId}/changes/{changeId} {
-      allow read, create: if request.auth != null && request.auth.uid == userId;
+      allow read: if canSync(userId);
+      allow create: if canSync(userId) && isChange(request.resource.data);
       // Clients remove records that a newer record for the same entry or settings has replaced.
-      allow delete: if request.auth != null && request.auth.uid == userId;
+      allow delete: if canSync(userId);
       allow update: if false;
     }
   }

@@ -1,12 +1,13 @@
 /* Offline app shell. Bump CACHE whenever a shell file changes. */
-const CACHE = 'pain-tracker-v43';
+const CACHE = 'pain-tracker-v44';
 const FIREBASE_VERSION = '12.18.0';
-const SHELL = ['.', 'index.html', 'styles.css?v=43', 'app.js?v=43', 'data.js?v=43',
-  'sync-data.js?v=43', 'sync.js?v=43', 'firebase-config.js?v=43', 'manifest.webmanifest', 'icon.svg'];
+const SHELL = ['.', 'index.html', 'styles.css?v=44', 'app.js?v=44', 'data.js?v=44',
+  'sync-data.js?v=44', 'sync.js?v=44', 'firebase-config.js?v=44', 'manifest.webmanifest', 'icon.svg'];
 const OPTIONAL = [
   `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`,
   `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`,
   `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-firestore.js`,
+  `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app-check.js`,
 ];
 
 self.addEventListener('install', event => {
