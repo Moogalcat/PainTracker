@@ -28,8 +28,8 @@ const BUILT_IN_MEDICATIONS = {
 };
 const IMPACT_LABELS = ['No limitation', 'Slowed down', 'Stopped activities', 'Needed bed rest'];
 const MAX_CUSTOM_ITEMS = 12;
-const INITIAL_VISIBLE = 6;
-const HISTORY_BATCH = 12;
+const INITIAL_VISIBLE = 3;
+const HISTORY_BATCH = 5;
 
 const $ = id => document.getElementById(id);
 const list = $('list');
