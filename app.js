@@ -14,7 +14,7 @@ if (window.navigator && window.navigator.standalone === true && document.documen
 
 const KEY = 'pain-tracker-v1';
 const META_KEY = 'pain-tracker-meta-v1';
-const BUILT_IN_SYMPTOMS = ['Headache', 'Stomach-ache', 'Nausea', 'Dizziness'];
+const BUILT_IN_SYMPTOMS = ['Headache', 'Stomachache', 'Nausea', 'Dizziness'];
 const BUILT_IN_CHARACTERISTICS = [
   'Sharp', 'Dull', 'Aching', 'Burning', 'Throbbing',
   'Cramping', 'Pressure', 'Tingling', 'Radiating',
@@ -253,8 +253,8 @@ function renderEntrySummary(card, entry) {
 
 function fillEditor(card, entry) {
   card.querySelector('[data-field="at"]').value = PainData.toInput(new Date(entry.at));
-  // A new entry is still ongoing, so its status is only offered once the entry has been saved and reopened.
-  card.querySelector('.timing-options').hidden = freshEntryIds.has(entry.id);
+  // A new entry is still ongoing, so its status can only be changed once the entry has been saved and reopened.
+  card.querySelector('.timing-options').disabled = freshEntryIds.has(entry.id);
   const endState = PainData.endState(entry);
   for (const radio of card.querySelectorAll('[data-field="endState"]')) {
     radio.name = `end-${entry.id}`;

@@ -5,7 +5,7 @@ A small, private, installable pain diary inspired by the companion Migraine Log 
 ## Features
 
 - Date and time for every entry
-- Built-in symptom chips for stomach-ache, headache, nausea, and dizziness
+- Built-in symptom chips for headache, stomachache, nausea, and dizziness
 - Custom symptom chips
 - A tappable 0–10 intensity scale for every selected symptom
 - Common and custom pain-characteristic chips
