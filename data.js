@@ -96,6 +96,14 @@ const PainData = (() => {
     };
   }
 
+  // Adds medications named in entries to the user's own list, so they are offered again in new entries.
+  function withUsedMedications(customMedications, entries, builtInNames = []) {
+    const known = new Set([...builtInNames, ...customMedications].map(name => name.toLocaleLowerCase()));
+    const used = entries.flatMap(entry => entry.medications.map(item => item.name))
+      .filter(name => name && name !== unknownMedicationName && !known.has(name.toLocaleLowerCase()));
+    return uniqueLabels([...customMedications, ...used]);
+  }
+
   function contentKey(entry) {
     const symptoms = entry.symptoms
       .map(item => [item.name.toLocaleLowerCase(), item.intensity])
@@ -234,7 +242,7 @@ const PainData = (() => {
   }
 
   return { backupVersion, themes, reliefLevels, reminderMinutes, unknownMedicationName, notesLimit,
-    uid, uniqueLabels, valid, normalise, contentKey, empty, parse, merge, toInput, fromInput, endState, csvCell };
+    uid, uniqueLabels, valid, normalise, withUsedMedications, contentKey, empty, parse, merge, toInput, fromInput, endState, csvCell };
 })();
 
 if (typeof module !== 'undefined') module.exports = PainData;

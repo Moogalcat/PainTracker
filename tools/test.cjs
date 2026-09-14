@@ -166,6 +166,17 @@ test('medications keep name, dose, and rating, and older Medication ratings migr
     D.contentKey(entry({ medications: [{ ...medications[0], dose: '200 mg' }, medications[1]] })));
 });
 
+test('medications named in entries join the own list, skipping built-ins, repeats and unnamed ones', () => {
+  const used = [
+    entry({ medications: [{ name: 'Paracetamol', dose: '1000 mg', effectiveness: 'Some' },
+      { name: 'ibuprofen', dose: '', effectiveness: null }, { name: '', dose: '', effectiveness: null }] }),
+    entry({ id: 'pain-2', medications: [{ name: 'coffee', dose: '1 cup', effectiveness: 'Strong' },
+      { name: 'paracetamol', dose: '', effectiveness: null }] }),
+  ];
+  assert.deepEqual(D.withUsedMedications(['Coffee'], used, ['Ibuprofen']), ['Coffee', 'Paracetamol']);
+  assert.deepEqual(D.withUsedMedications(['Coffee'], [], ['Ibuprofen']), ['Coffee']);
+});
+
 test('known causes stay separate from possible triggers', () => {
   const result = entry({ triggers: ['Stress', 'Dental work'], knownCauses: [' Dental work ', 'dental work'] });
   assert.deepEqual(result.knownCauses, ['Dental work']);

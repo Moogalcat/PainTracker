@@ -14,6 +14,8 @@ if (window.navigator && window.navigator.standalone === true && document.documen
 
 const KEY = 'pain-tracker-v1';
 const META_KEY = 'pain-tracker-meta-v1';
+// Kept apart from META_KEY, which backups overwrite, so older entries' medications are only listed once.
+const MEDICATIONS_LISTED_KEY = 'pain-tracker-medications-listed-v1';
 const BUILT_IN_SYMPTOMS = ['Headache', 'Stomachache', 'Nausea', 'Dizziness'];
 const BUILT_IN_CHARACTERISTICS = [
   'Sharp', 'Dull', 'Aching', 'Burning', 'Throbbing',
@@ -959,7 +961,8 @@ function saveEntry(card) {
     notes: card.querySelector('[data-field="notes"]').value.trim(),
   });
   const next = entries.map(item => item.id === entry.id ? updated : item);
-  if (!persistEntries(next)) return;
+  const customMedications = PainData.withUsedMedications(state.customMedications, [updated], Object.keys(BUILT_IN_MEDICATIONS));
+  if (!persistState({ ...state, entries: next, customMedications })) return;
   freshEntryIds.delete(entry.id);
   markChanged();
   card.classList.remove('open');
@@ -1697,6 +1700,19 @@ window.PainTrackerAppSync = {
     return true;
   },
 };
+
+// Medications named in older entries join the own list once. This waits for the page to load, after the sync script
+// has read the starting state, so sync records the longer list as a newer settings change.
+window.addEventListener('load', () => {
+  if (storageBlocked || readJSON(MEDICATIONS_LISTED_KEY, false) || !window.PainTrackerAppSync.isCurrent()) return;
+  const customMedications = PainData.withUsedMedications(state.customMedications, entries, Object.keys(BUILT_IN_MEDICATIONS));
+  if (customMedications.length !== state.customMedications.length) {
+    if (!persistState({ ...state, customMedications })) return;
+    markChanged();
+    render();
+  }
+  writeJSON(MEDICATIONS_LISTED_KEY, true);
+});
 
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(error => console.warn('Offline mode unavailable', error)));
