@@ -1,6 +1,13 @@
 /* Pain Tracker — local-first data storage with optional cloud sync. */
 'use strict';
 
+// A host that ignores _headers cannot send frame-ancestors, and a meta policy cannot forbid framing, so the app
+// refuses to run inside another site's frame.
+if (window.top !== window.self) {
+  document.body.textContent = 'Pain Tracker only works when opened directly, not inside another site.';
+  throw new Error('Pain Tracker will not run inside a frame.');
+}
+
 if (window.navigator && window.navigator.standalone === true && document.documentElement) {
   document.documentElement.classList.add('standalone');
 }

@@ -483,3 +483,24 @@ test('the service worker keeps only the app page as its offline copy', async () 
   online = false;
   assert.equal(await navigate(scope), '<title>Pain Tracker</title> updated');
 });
+
+test('the app refuses to run inside a frame on another site', () => {
+  const body = { textContent: 'Pain Tracker' };
+  const framed = vm.createContext({ window: { top: {}, self: {} }, document: { body } });
+  assert.throws(() => vm.runInContext(readFile('app.js'), framed), /inside a frame/);
+  assert.match(body.textContent, /opened directly/);
+});
+
+test('the content security policy matches in index.html and _headers, and only the header forbids framing', () => {
+  const policy = readFile('index.html').match(/<meta http-equiv="Content-Security-Policy" content="([^"]+)">/)?.[1];
+  assert.ok(policy, 'index.html carries the policy in a meta tag');
+  assert.ok(!policy.includes('frame-ancestors'), 'browsers ignore frame-ancestors in a meta tag');
+  const authDomain = readFile('firebase-config.js').match(/authDomain: '([^']+)'/)[1];
+  assert.ok(policy.split('; ').some(part => part.startsWith('frame-src ') && part.split(' ').includes(`https://${authDomain}`)),
+    'sign-in frames are allowed from the configured auth domain');
+  assert.ok(policy.split('; ').some(part => part.startsWith('script-src ') && part.split(' ').includes('https://www.google.com/recaptcha/')),
+    'App Check can load reCAPTCHA');
+  const headers = readFile('_headers').split(/\r?\n/).map(line => line.trim());
+  assert.ok(headers.includes(`Content-Security-Policy: ${policy}; frame-ancestors 'none'`), '_headers repeats the policy');
+  assert.ok(headers.includes('X-Frame-Options: DENY'));
+});
