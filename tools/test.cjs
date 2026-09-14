@@ -229,7 +229,7 @@ test('sync collapses identical copies and tombstones the dropped copy everywhere
   assert.deepEqual(result.uploads.map(item => [item.id, item.deleted]), [['copy-a', false], ['copy-b', true]]);
 });
 
-test('sync keeps only the newest confirmed readable record for each entry and for settings', () => {
+test('sync keeps only the newest confirmed readable record for each entry and for settings, and every deletion record', () => {
   const change = (cloudId, id, modifiedAt, deleted = false, overrides = {}) => ({ kind: 'entry', id, cloudId,
     modifiedAt, deleted, confirmed: true, ...(deleted ? {} : { entry: entry({ id }) }), ...overrides });
   const settings = (cloudId, modifiedAt) => ({ kind: 'settings', cloudId, modifiedAt, confirmed: true,
@@ -249,7 +249,8 @@ test('sync keeps only the newest confirmed readable record for each entry and fo
     settings('settings-old', '2026-09-13T08:00:00Z'),
     settings('settings-new', '2026-09-13T09:00:00Z'),
   ];
-  assert.deepEqual(S.supersededRecords(records), ['edit-old', 'deleted-content', 'restored-marker', 'settings-old']);
+  // The rules never let a deletion record be removed, so a restored entry's old deletion record stays.
+  assert.deepEqual(S.supersededRecords(records), ['edit-old', 'deleted-content', 'settings-old']);
 });
 
 test('signing in never merges a diary linked to another account without asking', () => {

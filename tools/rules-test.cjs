@@ -36,6 +36,16 @@ async function call(method, path, auth, body) {
   return response.status;
 }
 const create = (auth, uid, id, data) => call('POST', `users/${uid}/changes?documentId=${id}`, auth, { fields: fieldsOf(data) });
+const remove = (auth, uid, id) => call('DELETE', `users/${uid}/changes/${id}`, auth);
+// One request holding several writes, the way a Firestore batch is sent.
+async function commit(auth, writes) {
+  const response = await fetch(`${documents}:commit`, { method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken(auth)}` },
+    body: JSON.stringify({ writes }) });
+  await response.text();
+  return response.status;
+}
+const documentName = (uid, id) => `projects/${project}/databases/(default)/documents/users/${uid}/changes/${id}`;
 const query = (auth, uid) => call('POST', `users/${uid}:runQuery`, auth, { structuredQuery: {
   from: [{ collectionId: 'changes' }],
   where: { fieldFilter: { field: { fieldPath: 'generation' }, op: 'EQUAL', value: { integerValue: '1' } } } } });
@@ -79,6 +89,30 @@ test('an allowed account can query and delete its own records but never change t
   assert.equal(await query(friend, friend.uid), 200);
   assert.equal(await call('PATCH', `users/${friend.uid}/changes/rich`, friend, { fields: fieldsOf(entryChange) }), 403);
   assert.equal(await call('DELETE', `users/${friend.uid}/changes/rich`, friend), 200);
+});
+
+test('the longest note the app allows is accepted', async () => {
+  const longest = { ...entryChange, entry: { ...entryChange.entry, notes: 'x'.repeat(D.notesLimit) } };
+  assert.equal(await create(friend, friend.uid, 'longest', longest), 200);
+});
+
+test('an allowed account can remove entry contents and settings, but never the deletion records other devices rely on', async () => {
+  for (const [id, record] of Object.entries({ rich: entryChange, deletion, settings })) {
+    assert.equal(await create(friend, friend.uid, id, record), 200, id);
+  }
+  assert.equal(await remove(friend, friend.uid, 'rich'), 200);
+  assert.equal(await remove(friend, friend.uid, 'settings'), 200);
+  assert.equal(await remove(friend, friend.uid, 'already-removed'), 200);
+  assert.equal(await remove(friend, friend.uid, 'deletion'), 403);
+  assert.equal(await remove(stranger, friend.uid, 'deletion'), 403);
+});
+
+test('a batch of ten writes, as the app sends them, is accepted in one request', async () => {
+  const writes = Array.from({ length: 10 }, (_, index) => ({ update: { name: documentName(friend.uid, `batch-${index}`),
+    fields: fieldsOf(entryChange) }, currentDocument: { exists: false } }));
+  assert.equal(await commit(friend, writes), 200);
+  const deletes = writes.map(write => ({ delete: write.update.name }));
+  assert.equal(await commit(friend, deletes), 200);
 });
 
 test('the allowlist ignores letter case but requires a verified address', async () => {

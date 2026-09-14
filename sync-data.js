@@ -135,7 +135,8 @@ const PainSyncData = (() => {
 
   // Cloud records that a newer confirmed, readable record replaces. The newest record for each entry
   // (its deletion record once deleted) and the newest settings stay, so offline devices still catch up.
-  // A deletion outranks an edit saved at the same moment, matching reconcileEntries.
+  // A deletion outranks an edit saved at the same moment, matching reconcileEntries. Deletion records are never
+  // listed: the rules keep them, so a device that was offline cannot bring back an entry deleted elsewhere.
   function supersededRecords(records) {
     const groupOf = record => (isEntryChange(record) && typeof record.id === 'string' && record.id ? `entry:${record.id}`
       : record?.kind === 'settings' ? 'settings' : null);
@@ -156,7 +157,8 @@ const PainSyncData = (() => {
       if (readable(record) && (!newest.has(group) || outranks(record, newest.get(group)))) newest.set(group, record);
     }
     return candidates
-      .filter(record => newest.has(groupOf(record)) && outranks(newest.get(groupOf(record)), record))
+      .filter(record => record.deleted !== true && newest.has(groupOf(record))
+        && outranks(newest.get(groupOf(record)), record))
       .map(record => record.cloudId);
   }
 

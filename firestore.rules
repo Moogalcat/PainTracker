@@ -66,8 +66,10 @@ service cloud.firestore {
     match /users/{userId}/changes/{changeId} {
       allow read: if canSync(userId);
       allow create: if canSync(userId) && isChange(request.resource.data);
-      // Clients remove records that a newer record for the same entry or settings has replaced.
-      allow delete: if canSync(userId);
+      // Clients remove entry contents and settings that a newer record has replaced, never the deletion records that
+      // stop a device that was offline from bringing a deleted entry back. A record already removed may be removed again.
+      allow delete: if canSync(userId)
+        && (resource == null || resource.data.get('deleted', false) != true);
       allow update: if false;
     }
   }
