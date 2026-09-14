@@ -1,8 +1,8 @@
 /* Offline app shell. Bump CACHE whenever a shell file changes. */
-const CACHE = 'pain-tracker-v49';
+const CACHE = 'pain-tracker-v50';
 const FIREBASE_VERSION = '12.18.0';
-const SHELL = ['.', 'index.html', 'styles.css?v=49', 'app.js?v=49', 'data.js?v=49',
-  'sync-data.js?v=49', 'sync.js?v=49', 'firebase-config.js?v=49', 'manifest.webmanifest', 'icon.svg'];
+const SHELL = ['.', 'index.html', 'styles.css?v=50', 'app.js?v=50', 'data.js?v=50',
+  'sync-data.js?v=50', 'sync.js?v=50', 'firebase-config.js?v=50', 'manifest.webmanifest', 'icon.svg'];
 const OPTIONAL = [
   `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-app.js`,
   `https://www.gstatic.com/firebasejs/${FIREBASE_VERSION}/firebase-auth.js`,
@@ -33,6 +33,14 @@ self.addEventListener('activate', event => {
   );
 });
 
+// Only the app's own page is the offline copy. Other files opened directly under the app's address
+// (robots.txt, the icon) must not replace it, or an offline launch would show that file instead of the app.
+function isAppShell(url) {
+  const scope = new URL(self.registration.scope);
+  const { origin, pathname } = new URL(url);
+  return origin === scope.origin && (pathname === scope.pathname || pathname === `${scope.pathname}index.html`);
+}
+
 self.addEventListener('fetch', event => {
   const request = event.request;
   if (request.method !== 'GET') return;
@@ -44,7 +52,7 @@ self.addEventListener('fetch', event => {
   if (request.mode === 'navigate') {
     event.respondWith(fetch(new Request(request, { cache: 'reload' }))
       .then(async response => {
-        if (response.ok) await (await caches.open(CACHE)).put('index.html', response.clone());
+        if (response.ok && isAppShell(request.url)) await (await caches.open(CACHE)).put('index.html', response.clone());
         return response;
       })
       .catch(() => caches.match('index.html')));

@@ -450,3 +450,36 @@ test('an entry too large for the rules stays on this device while the rest of th
   assert.deepEqual(host.diary.entries.map(item => item.id).sort(), ['long-note', 'pain-1']);
   assert.ok(host.requests.length < 5, `${host.requests.length} requests`);
 });
+
+test('the service worker keeps only the app page as its offline copy', async () => {
+  const scope = 'https://pain-tracker.github-2ca.workers.dev/';
+  const pages = { [scope]: '<title>Pain Tracker</title>', [`${scope}robots.txt`]: 'User-agent: *',
+    [`${scope}?source=homescreen`]: '<title>Pain Tracker</title> updated' };
+  const stored = new Map();
+  const cache = { addAll: async () => {}, put: async (key, response) => { stored.set(String(key), await response.text()); },
+    match: async key => (stored.has(key) ? new Response(stored.get(key)) : undefined) };
+  const listeners = {};
+  let online = true;
+  const worker = vm.createContext({ URL, Response, Promise,
+    self: { location: new URL(`${scope}sw.js`), registration: { scope },
+      addEventListener: (type, handler) => { listeners[type] = handler; } },
+    caches: { open: async () => cache, match: key => cache.match(key), keys: async () => [], delete: async () => true },
+    Request: class { constructor(input, init = {}) { Object.assign(this, typeof input === 'string' ? { url: input } : input, init); } },
+    fetch: async request => {
+      if (!online) throw new TypeError('Failed to fetch');
+      return new Response(pages[request.url] ?? 'Not found', { status: request.url in pages ? 200 : 404 });
+    } });
+  vm.runInContext(readFile('sw.js'), worker);
+  const navigate = async url => {
+    let response;
+    listeners.fetch({ request: { url, method: 'GET', mode: 'navigate' }, respondWith: value => { response = value; }, waitUntil() {} });
+    return (await response).text();
+  };
+  await navigate(scope);
+  await navigate(`${scope}robots.txt`);
+  assert.equal(stored.get('index.html'), '<title>Pain Tracker</title>');
+  await navigate(`${scope}?source=homescreen`);
+  assert.equal(stored.get('index.html'), '<title>Pain Tracker</title> updated');
+  online = false;
+  assert.equal(await navigate(scope), '<title>Pain Tracker</title> updated');
+});
