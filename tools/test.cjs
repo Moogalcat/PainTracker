@@ -261,3 +261,17 @@ test('signing in never merges a diary linked to another account without asking',
   assert.equal(S.signInAction('account-a', 'account-b', { ...state(), deletedIds: ['gone'] }), 'switch');
   assert.equal(S.hasDiary(state()), false);
 });
+
+test('first sync with an account combines custom lists; afterwards the newest settings win', () => {
+  const local = { ...state(), customSymptoms: ['Jaw pain'], customMedications: ['Naproxen'],
+    preferences: { theme: 'dark', reminderMinutes: 60 } };
+  const cloud = { ...state(), customSymptoms: ['jaw pain', 'Back pain'], customTriggers: ['Stress'],
+    preferences: { theme: 'light', reminderMinutes: 0 } };
+  const first = S.chooseSettings(local, 0, cloud, 1000, true);
+  assert.deepEqual([first.customSymptoms, first.customMedications, first.customTriggers],
+    [['jaw pain', 'Back pain'], ['Naproxen'], ['Stress']]);
+  assert.deepEqual(first.preferences, { theme: 'light', reminderMinutes: 0 });
+  assert.deepEqual(S.chooseSettings(local, 2000, cloud, 1000, true).preferences, { theme: 'dark', reminderMinutes: 60 });
+  assert.deepEqual(S.chooseSettings(local, 0, cloud, 1000, false).customMedications, []);
+  assert.deepEqual(S.chooseSettings(local, 2000, cloud, 1000, false).customSymptoms, ['Jaw pain']);
+});

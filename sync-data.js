@@ -173,8 +173,20 @@ const PainSyncData = (() => {
     return hasDiary(state) ? 'ask' : 'switch';
   }
 
+  // Settings to keep when the cloud copy arrives: the newer side wins. The first time a device syncs with an
+  // account its custom lists are combined instead, so options added on either side survive.
+  function chooseSettings(local, localTime, cloud, cloudTime, firstSync) {
+    const newer = cloudTime >= localTime ? cloud : local;
+    const lists = ['customSymptoms', 'customCharacteristics', 'customRelief', 'customMedications', 'customTriggers'];
+    return {
+      ...Object.fromEntries(lists.map(key => [key,
+        firstSync ? PainData.uniqueLabels([...cloud[key], ...local[key]]) : [...newer[key]]])),
+      preferences: { ...newer.preferences },
+    };
+  }
+
   return { entryTime, isEntryChange, dedupeEntries, reconcileEntries, readSettings, supersededRecords,
-    hasDiary, signInAction };
+    hasDiary, signInAction, chooseSettings };
 })();
 
 if (typeof module !== 'undefined') module.exports = PainSyncData;

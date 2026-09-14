@@ -57,10 +57,13 @@ function loadSyncMeta() {
       deviceId: typeof value.deviceId === 'string' && value.deviceId ? value.deviceId : PainData.uid(),
       accountUid: typeof value.accountUid === 'string' && value.accountUid ? value.accountUid : null,
       settingsModifiedAt: Number.isFinite(value.settingsModifiedAt) ? value.settingsModifiedAt : 0,
+      // Metadata saved before this flag existed belongs to a device that has already synced its settings.
+      settingsSynced: typeof value.settingsSynced === 'boolean' ? value.settingsSynced
+        : Number.isFinite(value.settingsModifiedAt) && value.settingsModifiedAt > 0,
       tombstones: Object.fromEntries(Object.entries(tombstones).filter(([, time]) => Number.isFinite(time))),
     };
   } catch {
-    return { deviceId: PainData.uid(), accountUid: null, settingsModifiedAt: 0, tombstones: {} };
+    return { deviceId: PainData.uid(), accountUid: null, settingsModifiedAt: 0, settingsSynced: false, tombstones: {} };
   }
 }
 
@@ -144,11 +147,18 @@ function removeSupersededRecords(records) {
 
 function localChanges(previous, current) {
   baseline = clone(current);
-  if (!activeUser || !previous) return;
+  if (!previous) return;
+  const now = Date.now();
+  const settingsChanged = !sameSettings(previous, current);
+  // Timestamped even while signed out, so the newer settings win when this device next syncs.
+  if (settingsChanged) {
+    syncMeta.settingsModifiedAt = now;
+    saveSyncMeta();
+  }
+  if (!activeUser) return;
   const before = new Map(previous.entries.map(entry => [entry.id, entry]));
   const after = new Map(current.entries.map(entry => [entry.id, entry]));
   const records = [];
-  const now = Date.now();
 
   for (const entry of after.values()) {
     if (!before.has(entry.id) || JSON.stringify(before.get(entry.id)) !== JSON.stringify(entry)) records.push(entryRecord(entry));
@@ -166,10 +176,7 @@ function localChanges(previous, current) {
       records.push(deletionRecord(id, now));
     }
   }
-  if (!sameSettings(previous, current)) {
-    syncMeta.settingsModifiedAt = now;
-    records.push(settingsRecord(current, now));
-  }
+  if (settingsChanged) records.push(settingsRecord(current, now));
   saveSyncMeta();
   appendChanges(records);
 }
@@ -195,23 +202,24 @@ async function applySnapshot(snapshot) {
   const uploads = [...reconciled.uploads];
   const cloudSettings = remoteSettings && PainSyncData.readSettings(remoteSettings);
 
-  if (cloudSettings) {
+  // The first combination waits for the server copy, so a stale cached copy cannot undo newer changes.
+  const firstSettingsSync = !syncMeta.settingsSynced;
+  if (cloudSettings && !(firstSettingsSync && snapshot.metadata.fromCache)) {
     const remoteTime = Date.parse(remoteSettings.modifiedAt);
-    if (remoteTime >= syncMeta.settingsModifiedAt) {
-      if (!sameSettings(next, cloudSettings)) {
-        next = { ...next,
-          customSymptoms: cloudSettings.customSymptoms,
-          customCharacteristics: cloudSettings.customCharacteristics,
-          customRelief: cloudSettings.customRelief,
-          customMedications: cloudSettings.customMedications,
-          customTriggers: cloudSettings.customTriggers,
-          preferences: cloudSettings.preferences };
-        reconciled.changed = true;
-      }
-      syncMeta.settingsModifiedAt = remoteTime;
-    } else if (!snapshot.metadata.fromCache) uploads.push(settingsRecord(next, syncMeta.settingsModifiedAt));
+    const chosen = PainSyncData.chooseSettings(next, syncMeta.settingsModifiedAt, cloudSettings, remoteTime, firstSettingsSync);
+    if (!sameSettings(next, chosen)) {
+      next = { ...next, ...chosen };
+      reconciled.changed = true;
+    }
+    if (sameSettings(chosen, cloudSettings)) syncMeta.settingsModifiedAt = remoteTime;
+    else {
+      syncMeta.settingsModifiedAt = Math.max(syncMeta.settingsModifiedAt, remoteTime + 1);
+      if (!snapshot.metadata.fromCache) uploads.push(settingsRecord(next, syncMeta.settingsModifiedAt));
+    }
+    if (!snapshot.metadata.fromCache) syncMeta.settingsSynced = true;
   } else if (!remoteSettings && !snapshot.metadata.fromCache) {
     syncMeta.settingsModifiedAt = Date.now();
+    syncMeta.settingsSynced = true;
     uploads.push(settingsRecord(next, syncMeta.settingsModifiedAt));
   }
 
@@ -242,7 +250,7 @@ function stopWatching() {
 }
 
 function resetSyncMeta(accountUid) {
-  syncMeta = { deviceId: syncMeta.deviceId, accountUid, settingsModifiedAt: 0, tombstones: {} };
+  syncMeta = { deviceId: syncMeta.deviceId, accountUid, settingsModifiedAt: 0, settingsSynced: false, tombstones: {} };
   saveSyncMeta();
 }
 
