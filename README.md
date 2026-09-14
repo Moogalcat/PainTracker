@@ -44,4 +44,4 @@ The diary remains available in browser `localStorage`, including while offline. 
 2. Enable Google as a Firebase Authentication sign-in provider and add the deployed site hostname to Authentication's authorized domains.
 3. Create a Firestore database and deploy `firestore.rules` with `firebase deploy --only firestore:rules`.
 
-The rules permit a signed-in user to read and append records only inside their own `users/{uid}/changes` collection. Existing records cannot be changed. When an entry is deleted, the app removes its earlier contents from the cloud and keeps only a small deletion record (the entry ID and time) so other devices remove it too. Deletion and settings records cannot be deleted by clients.
+The rules permit a signed-in user to read and append records only inside their own `users/{uid}/changes` collection. Existing records cannot be changed. Once a newer record is saved, the app removes the older ones, so the cloud keeps only the latest version of each entry and of the settings. A deleted entry leaves only a small deletion record (the entry ID and time) so other devices remove it too.

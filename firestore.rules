@@ -4,9 +4,8 @@ service cloud.firestore {
   match /databases/{database}/documents {
     match /users/{userId}/changes/{changeId} {
       allow read, create: if request.auth != null && request.auth.uid == userId;
-      // Clients may remove entry contents, never the deletion or settings records other devices rely on.
-      allow delete: if request.auth != null && request.auth.uid == userId
-        && (resource == null || ('entry' in resource.data && resource.data.get('deleted', false) != true));
+      // Clients remove records that a newer record for the same entry or settings has replaced.
+      allow delete: if request.auth != null && request.auth.uid == userId;
       allow update: if false;
     }
   }

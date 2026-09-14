@@ -229,19 +229,25 @@ test('sync collapses identical copies and tombstones the dropped copy everywhere
   assert.deepEqual(result.uploads.map(item => [item.id, item.deleted]), [['copy-a', false], ['copy-b', true]]);
 });
 
-test('sync removes entry contents once a confirmed deletion supersedes them', () => {
-  const change = (cloudId, deleted, modifiedAt, overrides = {}) => ({ kind: 'entry', id: 'pain-1', cloudId,
-    deleted, modifiedAt, confirmed: true, ...(deleted ? {} : { entry: entry() }), ...overrides });
+test('sync keeps only the newest confirmed readable record for each entry and for settings', () => {
+  const change = (cloudId, id, modifiedAt, deleted = false, overrides = {}) => ({ kind: 'entry', id, cloudId,
+    modifiedAt, deleted, confirmed: true, ...(deleted ? {} : { entry: entry({ id }) }), ...overrides });
+  const settings = (cloudId, modifiedAt) => ({ kind: 'settings', cloudId, modifiedAt, confirmed: true,
+    customSymptoms: [], preferences: { theme: 'system', reminderMinutes: 0 } });
   const records = [
-    change('v1', false, '2026-09-13T10:00:00Z'),
-    change('v2', false, '2026-09-13T11:00:00Z'),
-    change('tombstone', true, '2026-09-13T11:00:00Z'),
-    change('restored', false, '2026-09-13T12:00:00Z'),
-    change('legacy-other', false, '2026-09-13T09:00:00Z', { id: 'other', kind: undefined }),
-    { kind: 'settings', cloudId: 'settings', modifiedAt: '2026-09-13T09:00:00Z', confirmed: true },
+    change('edit-old', 'edited', '2026-09-13T10:00:00Z'),
+    change('edit-new', 'edited', '2026-09-13T11:00:00Z'),
+    change('deleted-content', 'deleted', '2026-09-13T11:00:00Z'),
+    change('deleted-marker', 'deleted', '2026-09-13T11:00:00Z', true),
+    change('restored-marker', 'restored', '2026-09-13T10:00:00Z', true),
+    change('restored-edit', 'restored', '2026-09-13T12:00:00Z'),
+    change('pending-newer', 'pending', '2026-09-13T12:00:00Z', false, { confirmed: false }),
+    change('pending-older', 'pending', '2026-09-13T11:00:00Z'),
+    change('readable-older', 'unreadable', '2026-09-13T10:00:00Z'),
+    change('unreadable-newer', 'unreadable', '2026-09-13T11:00:00Z', false, { entry: { at: 'bad' } }),
+    change('legacy-only', 'legacy', '2026-09-13T09:00:00Z', false, { kind: undefined }),
+    settings('settings-old', '2026-09-13T08:00:00Z'),
+    settings('settings-new', '2026-09-13T09:00:00Z'),
   ];
-  assert.deepEqual(S.supersededContent(records), ['v1', 'v2']);
-
-  const unconfirmed = records.map(item => item.cloudId === 'tombstone' ? { ...item, confirmed: false } : item);
-  assert.deepEqual(S.supersededContent(unconfirmed), []);
+  assert.deepEqual(S.supersededRecords(records), ['edit-old', 'deleted-content', 'restored-marker', 'settings-old']);
 });

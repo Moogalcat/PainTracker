@@ -94,24 +94,6 @@ function sameSettings(a, b) {
   return JSON.stringify(settingsValue(a)) === JSON.stringify(settingsValue(b));
 }
 
-function normaliseCloudSettings(record) {
-  try {
-    const parsed = PainData.parse({
-      version: PainData.backupVersion,
-      entries: [],
-      customSymptoms: record.customSymptoms,
-      customCharacteristics: record.customCharacteristics,
-      customRelief: record.customRelief,
-      customMedications: record.customMedications,
-      customTriggers: record.customTriggers,
-      preferences: record.preferences,
-    }, true);
-    return parsed;
-  } catch {
-    return null;
-  }
-}
-
 function newest(records, key) {
   const latest = new Map();
   for (const record of records) {
@@ -141,9 +123,9 @@ function appendChanges(records) {
   });
 }
 
-// Deleted entries keep only their content-free deletion record in the cloud.
-function removeSupersededContent(records) {
-  const cloudIds = PainSyncData.supersededContent(records).filter(id => !removalRequested.has(id));
+// The cloud keeps only the newest record for each entry and for settings.
+function removeSupersededRecords(records) {
+  const cloudIds = PainSyncData.supersededRecords(records).filter(id => !removalRequested.has(id));
   const changes = firebaseApi.collection(db, 'users', activeUser.uid, 'changes');
   for (let start = 0; start < cloudIds.length; start += DELETE_BATCH_SIZE) {
     const batch = firebaseApi.writeBatch(db);
@@ -151,7 +133,7 @@ function removeSupersededContent(records) {
       removalRequested.add(cloudId);
       batch.delete(firebaseApi.doc(changes, cloudId));
     }
-    batch.commit().catch(error => console.warn('Deleted entry contents could not be removed from the cloud', error));
+    batch.commit().catch(error => console.warn('Superseded cloud records could not be removed', error));
   }
 }
 
@@ -206,7 +188,7 @@ async function applySnapshot(snapshot) {
   syncMeta.tombstones = reconciled.tombstones;
   let next = reconciled.state;
   const uploads = [...reconciled.uploads];
-  const cloudSettings = remoteSettings && normaliseCloudSettings(remoteSettings);
+  const cloudSettings = remoteSettings && PainSyncData.readSettings(remoteSettings);
 
   if (cloudSettings) {
     const remoteTime = Date.parse(remoteSettings.modifiedAt);
@@ -238,7 +220,7 @@ async function applySnapshot(snapshot) {
 
   if (!snapshot.metadata.fromCache) {
     appendChanges(uploads);
-    removeSupersededContent(records);
+    removeSupersededRecords(records);
   }
   if (reconciled.invalid) showSyncResult(`${reconciled.invalid} unreadable cloud record${reconciled.invalid === 1 ? '' : 's'} were ignored.`, true);
   else if (remoteSettings && !cloudSettings) showSyncResult('Unreadable cloud settings were ignored.', true);

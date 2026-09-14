@@ -116,23 +116,51 @@ const PainSyncData = (() => {
     };
   }
 
-  // Entry contents that a confirmed deletion supersedes. Deletion records stay so devices that
-  // were offline still learn about the deletion.
-  function supersededContent(records) {
-    const deletedAt = new Map();
-    for (const record of records) {
-      const time = Date.parse(record.modifiedAt);
-      if (isEntryChange(record) && record.deleted === true && record.confirmed && Number.isFinite(time)) {
-        deletedAt.set(record.id, Math.max(deletedAt.get(record.id) ?? time, time));
-      }
+  function readSettings(record) {
+    try {
+      return PainData.parse({
+        version: PainData.backupVersion,
+        entries: [],
+        customSymptoms: record.customSymptoms,
+        customCharacteristics: record.customCharacteristics,
+        customRelief: record.customRelief,
+        customMedications: record.customMedications,
+        customTriggers: record.customTriggers,
+        preferences: record.preferences,
+      }, true);
+    } catch {
+      return null;
     }
-    return records
-      .filter(record => isEntryChange(record) && record.deleted !== true && deletedAt.has(record.id)
-        && Date.parse(record.modifiedAt) <= deletedAt.get(record.id))
+  }
+
+  // Cloud records that a newer confirmed, readable record replaces. The newest record for each entry
+  // (its deletion record once deleted) and the newest settings stay, so offline devices still catch up.
+  // A deletion outranks an edit saved at the same moment, matching reconcileEntries.
+  function supersededRecords(records) {
+    const groupOf = record => (isEntryChange(record) && typeof record.id === 'string' && record.id ? `entry:${record.id}`
+      : record?.kind === 'settings' ? 'settings' : null);
+    const readable = record => (record.kind === 'settings' ? readSettings(record) !== null
+      : record.deleted === true || (PainData.valid(record.entry) && String(record.entry.id || '') === record.id));
+    const outranks = (a, b) => {
+      const timeA = Date.parse(a.modifiedAt);
+      const timeB = Date.parse(b.modifiedAt);
+      if (timeA !== timeB) return timeA > timeB;
+      if ((a.deleted === true) !== (b.deleted === true)) return a.deleted === true;
+      return String(a.cloudId) > String(b.cloudId);
+    };
+    const candidates = records.filter(record => record?.confirmed && groupOf(record)
+      && Number.isFinite(Date.parse(record.modifiedAt)));
+    const newest = new Map();
+    for (const record of candidates) {
+      const group = groupOf(record);
+      if (readable(record) && (!newest.has(group) || outranks(record, newest.get(group)))) newest.set(group, record);
+    }
+    return candidates
+      .filter(record => newest.has(groupOf(record)) && outranks(newest.get(groupOf(record)), record))
       .map(record => record.cloudId);
   }
 
-  return { entryTime, isEntryChange, dedupeEntries, reconcileEntries, supersededContent };
+  return { entryTime, isEntryChange, dedupeEntries, reconcileEntries, readSettings, supersededRecords };
 })();
 
 if (typeof module !== 'undefined') module.exports = PainSyncData;
