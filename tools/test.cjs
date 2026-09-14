@@ -198,13 +198,33 @@ test('sync applies deletions unless an entry has a newer edit', () => {
   assert.equal(retained.uploads[0].deleted, false);
 });
 
-test('sync collapses duplicate timestamps and keeps the newest or richer entry', () => {
-  const sparse = entry({ id: 'sparse', at: '2026-09-15T10:00:00Z', updatedAt: null,
-    notes: '', symptoms: [], triggers: [] });
-  const rich = entry({ id: 'rich', at: sparse.at, updatedAt: null,
-    notes: 'More detail', symptoms: [{ name: 'Headache', intensity: 8 }] });
-  assert.deepEqual(S.dedupeEntries([sparse, rich]).map(item => item.id), ['rich']);
+test('sync keeps separate entries that were saved for the same minute', () => {
+  const savedAt = D.fromInput('2026-09-15T10:00').toISOString();
+  const headache = entry({ id: 'headache', at: savedAt, updatedAt: '2026-09-15T10:01:10Z' });
+  const nausea = entry({ id: 'nausea', at: savedAt, updatedAt: '2026-09-15T10:01:40Z',
+    symptoms: [{ name: 'Nausea', intensity: 4 }] });
 
-  const edited = entry({ id: 'edited', at: sparse.at, updatedAt: '2026-09-16T10:00:00Z', notes: '' });
-  assert.deepEqual(S.dedupeEntries([rich, edited]).map(item => item.id), ['edited']);
+  const firstSignIn = S.reconcileEntries(state([headache, nausea]), []);
+  assert.deepEqual(firstSignIn.state.entries.map(item => item.id).sort(), ['headache', 'nausea']);
+  assert.deepEqual(firstSignIn.uploads.map(item => item.id).sort(), ['headache', 'nausea']);
+  assert.deepEqual(firstSignIn.state.deletedIds, []);
+
+  const hiddenButInCloud = S.reconcileEntries(state([nausea]), [headache, nausea].map(item => ({
+    kind: 'entry', id: item.id, modifiedAt: item.updatedAt, deleted: false, entry: item })));
+  assert.deepEqual(hiddenButInCloud.state.entries.map(item => item.id).sort(), ['headache', 'nausea']);
+});
+
+test('sync collapses identical copies and tombstones the dropped copy everywhere', () => {
+  const copyA = entry({ id: 'copy-a', updatedAt: '2026-09-13T11:00:00Z' });
+  const copyB = entry({ id: 'copy-b', updatedAt: '2026-09-13T11:00:00Z' });
+  assert.deepEqual(S.dedupeEntries([copyB, copyA]).map(item => item.id), ['copy-a']);
+
+  const olderB = entry({ id: 'copy-b', notes: 'Draft', updatedAt: '2026-09-13T10:30:00Z' });
+  const now = Date.parse('2026-09-14T00:00:00Z');
+  const result = S.reconcileEntries(state([copyA, copyB]), [{ kind: 'entry', id: olderB.id,
+    modifiedAt: olderB.updatedAt, deleted: false, entry: olderB }], {}, now);
+  assert.deepEqual(result.state.entries.map(item => item.id), ['copy-a']);
+  assert.deepEqual(result.state.deletedIds, ['copy-b']);
+  assert.equal(result.tombstones['copy-b'], now);
+  assert.deepEqual(result.uploads.map(item => [item.id, item.deleted]), [['copy-a', false], ['copy-b', true]]);
 });

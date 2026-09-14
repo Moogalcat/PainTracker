@@ -8,27 +8,15 @@ const PainSyncData = (() => {
     || (record?.kind == null && typeof record?.id === 'string'
       && (record.deleted === true || record.entry != null));
 
-  function detailScore(entry) {
-    return (entry.notes?.length || 0)
-      + (entry.symptoms?.length || 0) * 4
-      + (entry.characteristics?.length || 0) * 2
-      + (entry.relief?.length || 0) * 3
-      + (entry.medications?.length || 0) * 4
-      + (entry.triggers?.length || 0) * 2
-      + (entry.knownCauses?.length || 0) * 2
-      + (entry.impact == null ? 0 : 1)
-      + (entry.endedAt || entry.ongoing ? 1 : 0);
-  }
-
+  // Only identical copies under different IDs are collapsed. Sharing a start time is not enough:
+  // the editor stores whole minutes, so separate entries logged for the same minute are common.
   function dedupeEntries(entries) {
     const unique = new Map();
     for (const entry of entries) {
-      const key = entry.at;
+      const key = PainData.contentKey(entry);
       const existing = unique.get(key);
       if (!existing || entryTime(entry) > entryTime(existing)
-        || (entryTime(entry) === entryTime(existing) && detailScore(entry) > detailScore(existing))
-        || (entryTime(entry) === entryTime(existing) && detailScore(entry) === detailScore(existing)
-          && entry.id < existing.id)) unique.set(key, entry);
+        || (entryTime(entry) === entryTime(existing) && entry.id < existing.id)) unique.set(key, entry);
     }
     return [...unique.values()];
   }
@@ -38,7 +26,7 @@ const PainSyncData = (() => {
     const deleted = new Set(current.deletedIds);
     const deletedAt = { ...tombstones };
     const seenRemote = new Set();
-    const uploads = [];
+    let uploads = [];
     let changed = false;
     let invalid = 0;
 
@@ -98,15 +86,22 @@ const PainSyncData = (() => {
     }
 
     const uniqueEntries = dedupeEntries([...byId.values()]);
-    if (uniqueEntries.length !== byId.size) changed = true;
     const uniqueById = new Map(uniqueEntries.map(entry => [entry.id, entry]));
+    // Tombstone dropped copies so every device and the cloud keep the same survivor.
+    const duplicates = new Set([...byId.keys()].filter(id => !uniqueById.has(id)));
+    for (const id of duplicates) {
+      deleted.add(id);
+      deletedAt[id] = now;
+      changed = true;
+    }
+    uploads = uploads.filter(record => !duplicates.has(record.id));
 
     for (const entry of uniqueById.values()) {
       if (!seenRemote.has(entry.id)) uploads.push({ kind: 'entry', id: entry.id, deleted: false,
         modifiedAt: entry.updatedAt || entry.at, entry });
     }
     for (const id of deleted) {
-      if (!seenRemote.has(id)) uploads.push({ kind: 'entry', id, deleted: true,
+      if (!seenRemote.has(id) || duplicates.has(id)) uploads.push({ kind: 'entry', id, deleted: true,
         modifiedAt: new Date(deletedAt[id]).toISOString() });
     }
 
