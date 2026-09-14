@@ -1423,6 +1423,7 @@ async function importBackup(file) {
     const result = merged.result;
     const message = `Imported: ${result.added} added, ${result.updated} updated, ${result.duplicates} already present${result.conflicts ? `, ${result.conflicts} kept local` : ''}${result.invalid ? `, ${result.invalid} invalid skipped` : ''}.`;
     $('importResult').textContent = message;
+    $('importResult').classList.remove('error');
     $('importResult').hidden = false;
   } catch (error) {
     console.error(error);
