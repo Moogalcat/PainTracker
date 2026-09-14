@@ -1402,7 +1402,13 @@ function renderBackupStatus() {
   status.classList.toggle('stale', count > 0);
 }
 
+// Failures an export reports in the shared error banner. Each export clears its own earlier failure first, so a later
+// success never leaves it showing, while other errors stay put.
+const EXPORT_FAILED = 'The backup could not be created.';
+const EXPORT_REMINDER_FAILED = 'Backup download started, but the backup reminder could not be saved.';
+
 function exportBackup() {
+  if ([EXPORT_FAILED, EXPORT_REMINDER_FAILED].includes($('appError').textContent)) $('appError').hidden = true;
   try {
     const blob = new Blob([JSON.stringify({ ...state, exportedAt: new Date().toISOString() }, null, 2)], { type: 'application/json' });
     const link = document.createElement('a');
@@ -1410,10 +1416,13 @@ function exportBackup() {
     link.download = `pain-tracker-${new Date().toISOString().slice(0, 10)}.json`;
     link.click();
     setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-    writeJSON(META_KEY, { pending: 0, lastExportAt: new Date().toISOString() });
+    if (!writeJSON(META_KEY, { pending: 0, lastExportAt: new Date().toISOString() })) {
+      showError(EXPORT_REMINDER_FAILED);
+      return;
+    }
     renderBackupStatus();
     toast('Backup download started');
-  } catch (error) { console.error(error); showError('The backup could not be created.'); }
+  } catch (error) { console.error(error); showError(EXPORT_FAILED); }
 }
 
 async function importBackup(file) {

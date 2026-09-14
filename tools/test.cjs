@@ -504,3 +504,42 @@ test('the content security policy matches in index.html and _headers, and only t
   assert.ok(headers.includes(`Content-Security-Policy: ${policy}; frame-ancestors 'none'`), '_headers repeats the policy');
   assert.ok(headers.includes('X-Frame-Options: DENY'));
 });
+
+// Runs the real app.js up to its event wiring, with fake storage and page elements.
+function appHost(initial = {}) {
+  const storage = new Map(Object.entries(initial));
+  const failing = new Set();
+  const elements = new Map();
+  const element = id => {
+    if (!elements.has(id)) elements.set(id, { textContent: '', hidden: true, value: '', classList: { toggle() {}, add() {}, remove() {} } });
+    return elements.get(id);
+  };
+  const win = {};
+  win.top = win;
+  win.self = win;
+  const context = vm.createContext({ PainData: D, window: win, console: { error() {}, warn() {} },
+    setTimeout: () => 0, clearTimeout() {}, Blob: class {}, URL: { createObjectURL: () => 'blob:test', revokeObjectURL() {} },
+    document: { getElementById: element, createElement: () => ({ click() {} }) },
+    localStorage: { getItem: key => storage.get(key) ?? null, removeItem: key => storage.delete(key),
+      setItem: (key, value) => { if (failing.has(key)) throw new Error('Storage is full'); storage.set(key, value); } } });
+  const [setup, wiring] = readFile('app.js').split("\nlist.addEventListener('click'");
+  assert.ok(wiring, 'app.js still wires its events after the functions this host loads');
+  vm.runInContext(setup, context);
+  return { storage, failing, element, run: source => vm.runInContext(source, context) };
+}
+
+test('a backup whose reminder cannot be saved says so, and a later successful backup clears only that message', () => {
+  const host = appHost({ 'pain-tracker-v1': JSON.stringify(state([entry()])) });
+  const appError = host.element('appError');
+  host.failing.add('pain-tracker-meta-v1');
+  host.run('exportBackup()');
+  assert.equal(appError.hidden, false);
+  assert.match(appError.textContent, /backup reminder could not be saved/);
+  host.failing.clear();
+  host.run('exportBackup()');
+  assert.equal(appError.hidden, true);
+  assert.ok(JSON.parse(host.storage.get('pain-tracker-meta-v1')).lastExportAt);
+  host.run("showError('Your log changed in another tab. Reload before making more changes.')");
+  host.run('exportBackup()');
+  assert.equal(appError.hidden, false);
+});
