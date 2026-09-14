@@ -74,6 +74,10 @@ The diary remains available in browser `localStorage`, including while offline. 
 - Once a newer record reaches the cloud, the app removes older copies of that entry and older settings records. A deleted entry keeps a small deletion record (its ID and time) that is never removed, so a device that was offline cannot bring the entry back.
 - Anyone who signs in with an account that is not on the allowlist is signed straight back out, and the diary on that device is left as it was.
 
+### Syncing your own devices
+
+The live site syncs only for its owner's allowlisted accounts. To sync your own devices, run your own copy of the app with your own Firebase project: [OWN-COPY.md](OWN-COPY.md) walks through it step by step using GitHub Pages. Your diary is then stored only in your browsers and in a Firebase project you control.
+
 ## Firebase setup
 
 1. Create a Firebase web app and place its public configuration in `firebase-config.js`.
