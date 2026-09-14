@@ -33,6 +33,18 @@ test('validation accepts 0 and rejects intensity outside 0–10', () => {
   assert.equal(D.valid({ at, symptoms: [{ name: 'Headache', intensity: 10.5 }] }), false);
 });
 
+test('symptoms, relief attempts and medications can be saved without a rating', () => {
+  const unrated = { at, symptoms: [{ name: 'Headache', intensity: null }], relief: [{ name: 'Rest', effectiveness: null }],
+    medications: [{ name: '', dose: '', effectiveness: null }] };
+  assert.equal(D.valid(unrated), true);
+  const restored = D.parse(JSON.parse(JSON.stringify(state([D.normalise(unrated)]))), true);
+  assert.deepEqual(restored.entries[0].symptoms, [{ name: 'Headache', intensity: null }]);
+  assert.deepEqual(restored.entries[0].relief, [{ name: 'Rest', effectiveness: null }]);
+  assert.deepEqual(restored.entries[0].medications, [{ name: D.unknownMedicationName, dose: '', effectiveness: null }]);
+  assert.notEqual(D.contentKey(restored.entries[0]),
+    D.contentKey(D.normalise({ ...unrated, symptoms: [{ name: 'Headache', intensity: 3 }] })));
+});
+
 test('strict reading rejects corrupt records and repeated IDs', () => {
   assert.throws(() => D.parse({ entries: [entry(), { at: 'bad' }] }, true));
   assert.throws(() => D.parse({ entries: [entry(), entry()] }, true));

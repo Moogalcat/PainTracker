@@ -193,7 +193,6 @@ h1 {
 .entry-body { padding: 20px 18px 22px; }
 
 .field-label, legend { display: block; margin: 0 0 8px; font-size: .86rem; font-weight: 750; }
-.field-hint { margin: -4px 0 12px; color: var(--text-dim); font-size: .82rem; }
 input[type="datetime-local"], input[type="text"], textarea, select {
   width: 100%;
   min-height: 46px;
@@ -293,7 +292,6 @@ textarea { min-height: 104px; resize: vertical; line-height: 1.5; }
 }
 .relief-scale button:hover { border-color: var(--accent); color: var(--accent); }
 .relief-scale button.on { border-color: var(--accent); background: var(--accent); color: var(--accent-text); }
-.medication-hint { margin: -3px 0 9px; }
 .medication-choices { margin-bottom: 10px; }
 .medication-list { display: grid; gap: 10px; }
 .medication-row { position: relative; padding: 11px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
@@ -397,7 +395,6 @@ summary { padding: 16px 0; color: var(--text-dim); font-size: .92rem; font-weigh
   .actions { grid-template-columns: 1fr; }
   .entry-head { padding-inline: 15px; }
   .entry-body { padding-inline: 14px; }
-  .btn-danger { width: 100%; margin-left: 0; }
   .scale { gap: 3px; }
   .rating-row { padding-inline: 9px; }
   .custom-add { grid-template-columns: 1fr auto; }

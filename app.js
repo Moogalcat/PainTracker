@@ -14,7 +14,7 @@ if (window.navigator && window.navigator.standalone === true && document.documen
 
 const KEY = 'pain-tracker-v1';
 const META_KEY = 'pain-tracker-meta-v1';
-const BUILT_IN_SYMPTOMS = ['Stomach-ache', 'Headache', 'Nausea', 'Dizziness'];
+const BUILT_IN_SYMPTOMS = ['Headache', 'Stomach-ache', 'Nausea', 'Dizziness'];
 const BUILT_IN_CHARACTERISTICS = [
   'Sharp', 'Dull', 'Aching', 'Burning', 'Throbbing',
   'Cramping', 'Pressure', 'Tingling', 'Radiating',
@@ -213,13 +213,15 @@ function renderEntrySummary(card, entry) {
     entry.symptoms.forEach((symptom, index) => {
       if (index) meta.append(' · ');
       const label = document.createElement('span');
-      label.textContent = `${symptom.name} `;
-      const intensity = document.createElement('strong');
-      intensity.textContent = symptom.intensity;
-      label.append(intensity);
+      label.textContent = symptom.name;
+      if (symptom.intensity != null) {
+        const intensity = document.createElement('strong');
+        intensity.textContent = symptom.intensity;
+        label.append(' ', intensity);
+      }
       meta.append(label);
     });
-  } else meta.textContent = 'No symptoms rated';
+  } else meta.textContent = 'No symptoms recorded';
   const characteristics = card.querySelector('.entry-characteristics');
   characteristics.textContent = entry.characteristics.join(' · ');
   characteristics.hidden = !entry.characteristics.length;
@@ -232,11 +234,11 @@ function renderEntrySummary(card, entry) {
   impact.hidden = !impact.textContent;
   const medication = card.querySelector('.entry-medication');
   medication.textContent = entry.medications.length
-    ? `Medication: ${entry.medications.map(item => `${medicationLabel(item)} — ${item.effectiveness.toLowerCase()}`).join(' · ')}` : '';
+    ? `Medication: ${entry.medications.map(item => withHelp(medicationLabel(item), item, ' — ')).join(' · ')}` : '';
   medication.hidden = !medication.textContent;
   const relief = card.querySelector('.entry-relief');
   relief.textContent = entry.relief.length
-    ? `Relief: ${entry.relief.map(item => `${item.name} — ${item.effectiveness.toLowerCase()}`).join(' · ')}` : '';
+    ? `Relief: ${entry.relief.map(item => withHelp(item.name, item, ' — ')).join(' · ')}` : '';
   relief.hidden = !relief.textContent;
   const triggers = card.querySelector('.entry-triggers');
   triggers.textContent = [
@@ -251,6 +253,8 @@ function renderEntrySummary(card, entry) {
 
 function fillEditor(card, entry) {
   card.querySelector('[data-field="at"]').value = PainData.toInput(new Date(entry.at));
+  // A new entry is still ongoing, so its status is only offered once the entry has been saved and reopened.
+  card.querySelector('.timing-options').hidden = freshEntryIds.has(entry.id);
   const endState = PainData.endState(entry);
   for (const radio of card.querySelectorAll('[data-field="endState"]')) {
     radio.name = `end-${entry.id}`;
@@ -292,10 +296,6 @@ function allCharacteristics() {
 
 function allRelief() {
   return [...BUILT_IN_RELIEF, ...state.customRelief];
-}
-
-function selectedNames(card) {
-  return [...card.querySelectorAll('[data-chips="symptoms"] .chip.on')].map(button => button.dataset.value);
 }
 
 function makeChip(label, selected, custom) {
@@ -468,9 +468,6 @@ function makeMedicationPanel(medications) {
   const head = document.createElement('div');
   head.className = 'rating-head';
   head.textContent = MEDICATION;
-  const hint = document.createElement('p');
-  hint.className = 'field-hint medication-hint';
-  hint.textContent = 'Tap a medication, then choose the dose and how much it helped.';
   const choices = document.createElement('div');
   choices.className = 'chips medication-choices';
   choices.setAttribute('role', 'group');
@@ -499,7 +496,7 @@ function makeMedicationPanel(medications) {
   const rows = document.createElement('div');
   rows.className = 'medication-list';
   for (const item of medications) rows.append(makeMedicationRow(item));
-  panel.append(head, hint, choices, rows);
+  panel.append(head, choices, rows);
   return panel;
 }
 
@@ -671,6 +668,15 @@ function medicationLabel(item) {
   return `${item.name || PainData.unknownMedicationName}${item.dose ? ` ${item.dose}` : ''}`;
 }
 
+// Adds how much a relief attempt or medication helped, when that was recorded.
+function withHelp(label, item, separator, wrap = text => text.toLowerCase()) {
+  return item.effectiveness ? `${label}${separator}${wrap(item.effectiveness)}` : label;
+}
+
+function symptomText(item) {
+  return item.intensity == null ? item.name : `${item.name} ${item.intensity}/10`;
+}
+
 function renderMedicationNames() {
   const names = PainData.uniqueLabels(entries.flatMap(entry => entry.medications.map(item => item.name)))
     .filter(name => name !== PainData.unknownMedicationName);
@@ -703,9 +709,10 @@ function makeHelpRating(label, name, effectiveness, prompt = 'How much did it he
 }
 
 function readSymptoms(card) {
-  return [...card.querySelectorAll('.rating-row[data-symptom]')]
-    .filter(row => row.dataset.intensity !== undefined)
-    .map(row => ({ name: row.dataset.symptom, intensity: Number(row.dataset.intensity) }));
+  return [...card.querySelectorAll('.rating-row[data-symptom]')].map(row => ({
+    name: row.dataset.symptom,
+    intensity: row.dataset.intensity === undefined ? null : Number(row.dataset.intensity),
+  }));
 }
 
 function readImpact(card) {
@@ -714,9 +721,10 @@ function readImpact(card) {
 }
 
 function readRelief(card) {
-  return [...card.querySelectorAll('[data-relief-ratings] [data-relief]')]
-    .filter(row => PainData.reliefLevels.includes(row.dataset.effectiveness))
-    .map(row => ({ name: row.dataset.relief, effectiveness: row.dataset.effectiveness }));
+  return [...card.querySelectorAll('[data-relief-ratings] [data-relief]')].map(row => ({
+    name: row.dataset.relief,
+    effectiveness: PainData.reliefLevels.includes(row.dataset.effectiveness) ? row.dataset.effectiveness : null,
+  }));
 }
 
 function readMedications(card) {
@@ -927,13 +935,6 @@ function saveEntry(card) {
   if (!date) { showCardError(card, 'Choose a valid date and time.'); return; }
   if (date.getTime() > Date.now()) { showCardError(card, 'The date and time cannot be in the future.'); return; }
 
-  const chosen = selectedNames(card);
-  const symptoms = readSymptoms(card);
-  if (symptoms.length !== chosen.length) {
-    showCardError(card, 'Choose an intensity from 0–10 for every selected symptom.');
-    return;
-  }
-
   const endState = selectedEndState(card);
   let endedAt = null;
   if (endState === 'ended') {
@@ -944,32 +945,17 @@ function saveEntry(card) {
     endedAt = end.toISOString();
   }
 
-  const chosenRelief = card.querySelectorAll(`[data-chips="relief"] .chip.on:not([data-value="${MEDICATION}"])`).length;
-  const relief = readRelief(card);
-  if (relief.length !== chosenRelief) {
-    showCardError(card, 'Choose how much every selected relief attempt helped.');
-    return;
-  }
-  const medications = readMedications(card);
-  if (medications.some(item => !item.name)) {
-    showCardError(card, 'Enter a name for every medication.');
-    return;
-  }
-  if (medications.some(item => !item.effectiveness)) {
-    showCardError(card, 'Choose how much every medication helped.');
-    return;
-  }
-
+  // Ratings and medication names are optional, so unfinished details never block saving.
   const updated = PainData.normalise({
     ...entry,
     at: date.toISOString(),
     updatedAt: new Date().toISOString(),
     endedAt,
     ongoing: endState === 'ongoing',
-    symptoms,
+    symptoms: readSymptoms(card),
     characteristics: readCharacteristics(card),
-    relief,
-    medications,
+    relief: readRelief(card),
+    medications: readMedications(card),
     impact: readImpact(card),
     ...readTriggerChoices(card),
     notes: card.querySelector('[data-field="notes"]').value.trim(),
@@ -1115,6 +1101,7 @@ function appendCountBlock(stats, title, names) {
 function appendHelpBlock(stats, title, ratings) {
   const counts = new Map();
   for (const [name, effectiveness] of ratings) {
+    if (!effectiveness) continue;
     const key = name.toLocaleLowerCase();
     const current = counts.get(key) || { name, count: 0, score: 0 };
     current.count++;
@@ -1146,7 +1133,7 @@ function renderStats() {
   }
 
   const facts = statBlock('Overview');
-  const values = rows.flatMap(entry => entry.symptoms.map(symptom => symptom.intensity));
+  const values = rows.flatMap(entry => entry.symptoms.map(symptom => symptom.intensity)).filter(value => value != null);
   const completedMinutes = rows.filter(entry => entry.endedAt).map(entry => Math.max(0, (Date.parse(entry.endedAt) - Date.parse(entry.at)) / 60000));
   const dl = document.createElement('dl');
   dl.className = 'stat-facts';
@@ -1185,6 +1172,7 @@ function renderStats() {
 
   const symptoms = new Map();
   for (const entry of rows) for (const symptom of entry.symptoms) {
+    if (symptom.intensity == null) continue;
     const key = symptom.name;
     const current = symptoms.get(key) || { count: 0, total: 0 };
     current.count++; current.total += symptom.intensity; symptoms.set(key, current);
@@ -1263,11 +1251,11 @@ function entryDetailLines(entry) {
     entry.ongoing ? 'Status: ongoing'
       : entry.endedAt ? `Status: ended · Duration: ${durationText(entry.at, entry.endedAt)} · ended ${describe(new Date(entry.endedAt))}`
         : 'Status: ended, time unknown',
-    entry.symptoms.length ? `Symptoms: ${entry.symptoms.map(item => `${item.name} ${item.intensity}/10`).join(', ')}` : 'Symptoms: none recorded',
+    entry.symptoms.length ? `Symptoms: ${entry.symptoms.map(symptomText).join(', ')}` : 'Symptoms: none recorded',
     entry.characteristics.length ? `Characteristics: ${entry.characteristics.join(', ')}` : '',
     entry.impact == null ? '' : `Activity impact: ${IMPACT_LABELS[entry.impact]}`,
-    entry.medications.length ? `Medication: ${entry.medications.map(item => `${medicationLabel(item)} (${item.effectiveness.toLowerCase()})`).join(', ')}` : '',
-    entry.relief.length ? `Relief: ${entry.relief.map(item => `${item.name} (${item.effectiveness.toLowerCase()})`).join(', ')}` : '',
+    entry.medications.length ? `Medication: ${entry.medications.map(item => withHelp(medicationLabel(item), item, ' ', text => `(${text.toLowerCase()})`)).join(', ')}` : '',
+    entry.relief.length ? `Relief: ${entry.relief.map(item => withHelp(item.name, item, ' ', text => `(${text.toLowerCase()})`)).join(', ')}` : '',
     entry.knownCauses.length ? `Known causes: ${entry.knownCauses.join(', ')}` : '',
     entry.triggers.length ? `Possible triggers: ${entry.triggers.join(', ')}` : '',
     entry.notes ? `Notes: ${entry.notes}` : '',
@@ -1333,11 +1321,11 @@ function exportCsvReport() {
     entry.endedAt || '',
     entry.endedAt ? durationText(entry.at, entry.endedAt) : '',
     entry.ongoing ? 'Ongoing' : entry.endedAt ? 'Ended' : 'Ended, time unknown',
-    entry.symptoms.map(item => `${item.name} ${item.intensity}/10`).join('; '),
+    entry.symptoms.map(symptomText).join('; '),
     entry.characteristics.join('; '),
     entry.impact == null ? '' : IMPACT_LABELS[entry.impact],
-    entry.medications.map(item => `${medicationLabel(item)} (${item.effectiveness})`).join('; '),
-    entry.relief.map(item => `${item.name} (${item.effectiveness})`).join('; '),
+    entry.medications.map(item => withHelp(medicationLabel(item), item, ' ', text => `(${text})`)).join('; '),
+    entry.relief.map(item => withHelp(item.name, item, ' ', text => `(${text})`)).join('; '),
     entry.knownCauses.join('; '),
     entry.triggers.join('; '),
     entry.notes,

@@ -10,6 +10,9 @@ const PainData = (() => {
   // Matches the notes cap in firestore.rules and the notes editor's maxlength.
   const notesLimit = 50000;
   const isDate = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
+  // Ratings are optional: a symptom, relief attempt or medication can be saved without one.
+  const isIntensity = value => value == null || (Number.isInteger(value) && value >= 0 && value <= 10);
+  const isRating = value => value == null || reliefLevels.includes(value);
   const uid = () => globalThis.crypto?.randomUUID?.()
     || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
 
@@ -35,17 +38,17 @@ const PainData = (() => {
         && entry.characteristics.every(value => typeof value === 'string' && value.trim())))
       && (entry.relief == null || (Array.isArray(entry.relief)
         && entry.relief.every(item => item && typeof item.name === 'string' && item.name.trim()
-          && reliefLevels.includes(item.effectiveness))))
+          && isRating(item.effectiveness))))
       && (entry.medications == null || (Array.isArray(entry.medications)
         && entry.medications.every(item => item && typeof item.name === 'string'
-          && (item.dose == null || typeof item.dose === 'string') && reliefLevels.includes(item.effectiveness))))
+          && (item.dose == null || typeof item.dose === 'string') && isRating(item.effectiveness))))
       && (entry.triggers == null || (Array.isArray(entry.triggers)
         && entry.triggers.every(value => typeof value === 'string' && value.trim())))
       && (entry.knownCauses == null || (Array.isArray(entry.knownCauses)
         && entry.knownCauses.every(value => typeof value === 'string' && value.trim())))
       && (entry.symptoms == null || (Array.isArray(entry.symptoms)
         && entry.symptoms.every(item => item && typeof item.name === 'string' && item.name.trim()
-          && Number.isInteger(item.intensity) && item.intensity >= 0 && item.intensity <= 10)));
+          && isIntensity(item.intensity))));
   }
 
   function normalise(entry) {
@@ -53,23 +56,21 @@ const PainData = (() => {
     for (const item of entry.symptoms || []) {
       const name = String(item.name).trim();
       const key = name.toLocaleLowerCase();
-      if (name && Number.isInteger(item.intensity) && item.intensity >= 0 && item.intensity <= 10) {
-        symptomMap.set(key, { name, intensity: item.intensity });
-      }
+      if (name && isIntensity(item.intensity)) symptomMap.set(key, { name, intensity: item.intensity ?? null });
     }
     const reliefMap = new Map();
     let legacyMedication = null;
     for (const item of entry.relief || []) {
       const name = String(item.name).trim();
       const key = name.toLocaleLowerCase();
-      if (!name || !reliefLevels.includes(item.effectiveness)) continue;
+      if (!name || !isRating(item.effectiveness)) continue;
       if (key === 'medication') legacyMedication = item.effectiveness;
-      else reliefMap.set(key, { name, effectiveness: item.effectiveness });
+      else reliefMap.set(key, { name, effectiveness: item.effectiveness ?? null });
     }
     const medications = (entry.medications || [])
-      .filter(item => item && reliefLevels.includes(item.effectiveness))
+      .filter(item => item && isRating(item.effectiveness))
       .map(item => ({ name: String(item.name ?? '').trim() || unknownMedicationName,
-        dose: String(item.dose ?? '').trim(), effectiveness: item.effectiveness }));
+        dose: String(item.dose ?? '').trim(), effectiveness: item.effectiveness ?? null }));
     // Entries from before medication details keep their overall rating with an explicit fallback label.
     if (!medications.length && legacyMedication) medications.push({ name: unknownMedicationName, dose: '', effectiveness: legacyMedication });
     const knownCauses = uniqueLabels(entry.knownCauses);
