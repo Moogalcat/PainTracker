@@ -21,7 +21,7 @@
   <meta name="apple-mobile-web-app-title" content="Pain Tracker">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=39">
 </head>
 <body>
   <header class="topbar">
@@ -164,8 +164,6 @@
         <button type="button" class="repeat-entry" data-act="repeat" aria-label="Repeat this entry now">Repeat</button>
       </div>
       <div class="entry-body" hidden>
-        <p class="entry-error error" role="alert" hidden></p>
-
         <label class="field-label" for="">Date &amp; time</label>
         <input type="datetime-local" data-field="at" required>
         <fieldset class="timing-options">
@@ -215,6 +213,7 @@
         <label class="field-label">Notes</label>
         <textarea data-field="notes" rows="4" placeholder="Anything else worth remembering…"></textarea>
 
+        <p class="entry-error error" role="alert" hidden></p>
         <div class="row entry-actions">
           <button type="button" class="btn btn-primary btn-sm" data-act="save">Save</button>
           <button type="button" class="btn btn-ghost btn-sm" data-act="cancel">Cancel</button>
@@ -224,10 +223,10 @@
     </li>
   </template>
 
-  <script src="data.js?v=23"></script>
-  <script src="sync-data.js?v=23"></script>
-  <script src="app.js?v=23"></script>
-  <script src="firebase-config.js?v=23"></script>
-  <script type="module" src="sync.js?v=23"></script>
+  <script src="data.js?v=39"></script>
+  <script src="sync-data.js?v=39"></script>
+  <script src="app.js?v=39"></script>
+  <script src="firebase-config.js?v=39"></script>
+  <script type="module" src="sync.js?v=39"></script>
 </body>
 </html>

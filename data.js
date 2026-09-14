@@ -113,6 +113,7 @@ const PainData = (() => {
       customSymptoms: [],
       customCharacteristics: [],
       customRelief: [],
+      customMedications: [],
       customTriggers: [],
       preferences: { theme: 'system', reminderMinutes: 0 },
       deletedIds: [],
@@ -123,7 +124,7 @@ const PainData = (() => {
     const object = Array.isArray(value) ? { entries: value } : value;
     if (!object || !Array.isArray(object.entries)) throw new Error('No entry list found');
     if (object.version != null && ![1, backupVersion].includes(object.version)) throw new Error('Unsupported backup version');
-    for (const key of ['customSymptoms', 'customCharacteristics', 'customRelief', 'customTriggers']) {
+    for (const key of ['customSymptoms', 'customCharacteristics', 'customRelief', 'customMedications', 'customTriggers']) {
       if (object[key] != null && (!Array.isArray(object[key])
         || !object[key].every(item => typeof item === 'string' && item.trim()))) {
         throw new Error(`Invalid ${key}`);
@@ -152,6 +153,7 @@ const PainData = (() => {
       customSymptoms: uniqueLabels(object.customSymptoms),
       customCharacteristics: uniqueLabels(object.customCharacteristics),
       customRelief: uniqueLabels(object.customRelief),
+      customMedications: uniqueLabels(object.customMedications),
       customTriggers: uniqueLabels(object.customTriggers),
       preferences: {
         theme: object.preferences?.theme || 'system',
@@ -192,6 +194,7 @@ const PainData = (() => {
         customSymptoms: uniqueLabels([...current.customSymptoms, ...incoming.customSymptoms]),
         customCharacteristics: uniqueLabels([...current.customCharacteristics, ...incoming.customCharacteristics]),
         customRelief: uniqueLabels([...current.customRelief, ...incoming.customRelief]),
+        customMedications: uniqueLabels([...current.customMedications, ...incoming.customMedications]),
         customTriggers: uniqueLabels([...current.customTriggers, ...incoming.customTriggers]),
         preferences: incoming.hasPreferences ? incoming.preferences : current.preferences,
         deletedIds: [...deleted],

@@ -14,6 +14,11 @@ const BUILT_IN_CHARACTERISTICS = [
 ];
 const BUILT_IN_RELIEF = ['Medication', 'Rest', 'Heat', 'Cold', 'Stretching', 'Hydration', 'Food', 'Movement'];
 const MEDICATION = 'Medication';
+const DEFAULT_MEDICATION_DOSES = ['200 mg', '500 mg', '1000 mg'];
+const REMOVED_DEFAULT_MEDICATIONS = new Set(['paracetamol']);
+const BUILT_IN_MEDICATIONS = {
+  Ibuprofen: DEFAULT_MEDICATION_DOSES,
+};
 const IMPACT_LABELS = ['No limitation', 'Slowed down', 'Stopped activities', 'Needed bed rest'];
 const MAX_CUSTOM_ITEMS = 12;
 const INITIAL_VISIBLE = 6;
@@ -61,6 +66,7 @@ function loadState() {
       customSymptoms: loaded.customSymptoms,
       customCharacteristics: loaded.customCharacteristics,
       customRelief: loaded.customRelief,
+      customMedications: loaded.customMedications,
       customTriggers: loaded.customTriggers,
       preferences: loaded.preferences,
       deletedIds: loaded.deletedIds,
@@ -85,6 +91,7 @@ function persistState(next, recovering = false, fromSync = false) {
       customSymptoms: next.customSymptoms,
       customCharacteristics: next.customCharacteristics,
       customRelief: next.customRelief,
+      customMedications: next.customMedications,
       customTriggers: next.customTriggers,
       preferences: next.preferences,
       deletedIds: next.deletedIds,
@@ -454,16 +461,100 @@ function makeMedicationPanel(medications) {
   const head = document.createElement('div');
   head.className = 'rating-head';
   head.textContent = MEDICATION;
+  const hint = document.createElement('p');
+  hint.className = 'field-hint medication-hint';
+  hint.textContent = 'Tap a medication, then choose the dose and how much it helped.';
+  const choices = document.createElement('div');
+  choices.className = 'chips medication-choices';
+  choices.setAttribute('role', 'group');
+  choices.setAttribute('aria-label', 'Medication');
+  const selectedNames = new Set(medications.map(item => item.name.toLocaleLowerCase()));
+  const medicationNames = PainData.uniqueLabels([
+    ...Object.keys(BUILT_IN_MEDICATIONS),
+    ...state.customMedications.filter(name => !REMOVED_DEFAULT_MEDICATIONS.has(name.toLocaleLowerCase())),
+    ...medications.map(item => item.name),
+  ]).filter(name => name !== PainData.unknownMedicationName);
+  for (const name of medicationNames) {
+    const custom = state.customMedications.includes(name)
+      && !REMOVED_DEFAULT_MEDICATIONS.has(name.toLocaleLowerCase());
+    const rendered = makeChip(name, selectedNames.has(name.toLocaleLowerCase()), custom);
+    const choice = rendered.matches('.chip') ? rendered : rendered.querySelector('.chip');
+    choice.dataset.medAction = 'select';
+    if (custom) rendered.querySelector('.chip-x').dataset.medAction = 'remove-option';
+    choices.append(rendered);
+  }
+  const addOwn = document.createElement('button');
+  addOwn.type = 'button';
+  addOwn.className = 'chip chip-add';
+  addOwn.dataset.medAction = 'add-own';
+  addOwn.textContent = '+ Add your own';
+  choices.append(addOwn);
   const rows = document.createElement('div');
   rows.className = 'medication-list';
-  for (const item of medications.length ? medications : [{}]) rows.append(makeMedicationRow(item));
+  for (const item of medications) rows.append(makeMedicationRow(item));
+  panel.append(head, hint, choices, rows);
+  return panel;
+}
+
+function showMedicationAddForm(panel) {
+  panel.querySelector('[data-medication-own]')?.remove();
+  const form = document.createElement('div');
+  form.className = 'custom-add';
+  form.dataset.medicationOwn = '';
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.maxLength = 60;
+  input.placeholder = 'Medication name';
+  input.setAttribute('aria-label', 'Medication name');
+  input.setAttribute('list', 'medicationNames');
   const add = document.createElement('button');
   add.type = 'button';
-  add.className = 'chip chip-add';
-  add.dataset.medAction = 'add';
-  add.textContent = '+ Add medication';
-  panel.append(head, rows, add);
-  return panel;
+  add.className = 'btn btn-primary btn-sm';
+  add.dataset.medAction = 'add-own-confirm';
+  add.textContent = 'Add';
+  const cancel = document.createElement('button');
+  cancel.type = 'button';
+  cancel.className = 'btn btn-ghost btn-sm';
+  cancel.dataset.medAction = 'add-own-cancel';
+  cancel.textContent = 'Cancel';
+  form.append(input, add, cancel);
+  panel.querySelector('.medication-choices').after(form);
+  input.focus();
+}
+
+function addCustomMedication(card, form) {
+  const rawName = form.querySelector('input').value.trim();
+  if (!rawName) { showCardError(card, 'Enter a medication name first.'); return; }
+  const panel = form.closest('[data-medication-panel]');
+  const existing = [...panel.querySelectorAll('[data-medication]')]
+    .some(row => row.querySelector('[data-med-field="name"]').value.toLocaleLowerCase() === rawName.toLocaleLowerCase());
+  if (existing) { showCardError(card, 'That medication is already selected.'); return; }
+  const builtInName = Object.keys(BUILT_IN_MEDICATIONS)
+    .find(name => name.toLocaleLowerCase() === rawName.toLocaleLowerCase());
+  const name = builtInName || rawName;
+  if (!builtInName && !state.customMedications.some(item => item.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+    if (!persistState({ ...state, customMedications: [...state.customMedications, name] })) return;
+    markChanged();
+  }
+  panel.querySelector('.medication-list').append(makeMedicationRow({ name }));
+  let chip = [...panel.querySelectorAll('[data-med-action="select"]')]
+    .find(button => button.dataset.value.toLocaleLowerCase() === name.toLocaleLowerCase());
+  if (!chip) {
+    const rendered = makeChip(name, true, !builtInName);
+    chip = rendered.matches('.chip') ? rendered : rendered.querySelector('.chip');
+    chip.dataset.medAction = 'select';
+    if (!builtInName) rendered.querySelector('.chip-x').dataset.medAction = 'remove-option';
+    panel.querySelector('[data-med-action="add-own"]').before(rendered);
+  }
+  chip.classList.add('on');
+  chip.setAttribute('aria-pressed', 'true');
+  form.remove();
+  showCardError(card, '');
+}
+
+function medicationDoseLabel(value) {
+  const dose = String(value || '').trim();
+  return /^\d+(?:[.,]\d+)?$/.test(dose) ? `${dose} mg` : dose;
 }
 
 function makeMedicationRow({ name = '', dose = '', effectiveness = null } = {}) {
@@ -471,32 +562,82 @@ function makeMedicationRow({ name = '', dose = '', effectiveness = null } = {}) 
   row.className = 'medication-row';
   row.dataset.medication = '';
   if (PainData.reliefLevels.includes(effectiveness)) row.dataset.effectiveness = effectiveness;
+  dose = medicationDoseLabel(dose);
 
+  const availableDoses = name ? DEFAULT_MEDICATION_DOSES : [];
   const fields = document.createElement('div');
   fields.className = 'medication-fields';
-  for (const [field, value, placeholder, label, maxLength] of [
-    ['name', name, 'Name, e.g. Ibuprofen', 'Medication name', 60],
-    ['dose', dose, 'Dose, e.g. 400 mg', 'Dose', 30],
-  ]) {
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.dataset.medField = field;
-    input.value = value;
-    input.maxLength = maxLength;
-    input.placeholder = placeholder;
-    input.setAttribute('aria-label', label);
-    if (field === 'name') input.setAttribute('list', 'medicationNames');
-    fields.append(input);
-  }
+  if (name) fields.classList.add('medication-fields-built-in');
+  const nameInput = document.createElement('input');
+  nameInput.type = name ? 'hidden' : 'text';
+  nameInput.dataset.medField = 'name';
+  nameInput.value = name;
+  nameInput.maxLength = 60;
+  nameInput.placeholder = 'Medication name';
+  nameInput.setAttribute('aria-label', 'Medication name');
+  nameInput.setAttribute('list', 'medicationNames');
+  fields.append(nameInput);
   const remove = document.createElement('button');
   remove.type = 'button';
   remove.className = 'medication-remove';
   remove.dataset.medAction = 'remove';
   remove.setAttribute('aria-label', 'Remove medication');
   remove.textContent = '×';
-  fields.append(remove);
+  if (!name) fields.append(remove);
 
-  row.append(fields, ...makeHelpRating('How much did it help?', MEDICATION, effectiveness, ''));
+  const title = document.createElement('div');
+  title.className = 'medication-title';
+  title.textContent = name || 'Your medication';
+  const doseLabel = document.createElement('span');
+  doseLabel.className = 'medication-dose-label';
+  doseLabel.textContent = 'Dose';
+  const doseChoices = document.createElement('div');
+  doseChoices.className = 'chips dose-choices';
+  doseChoices.setAttribute('role', 'group');
+  doseChoices.setAttribute('aria-label', `${name || 'Medication'} dose`);
+  const doseOptions = [...availableDoses];
+  if (dose && !doseOptions.includes(dose)) doseOptions.push(dose);
+  for (const option of doseOptions) {
+    const custom = !DEFAULT_MEDICATION_DOSES.includes(option);
+    const rendered = makeChip(option, dose === option, custom);
+    const button = rendered.matches('.chip') ? rendered : rendered.querySelector('.chip');
+    button.dataset.medAction = 'dose';
+    button.dataset.dose = option;
+    if (custom) rendered.querySelector('.chip-x').dataset.medAction = 'remove-dose-option';
+    doseChoices.append(rendered);
+  }
+  const customDose = document.createElement('button');
+  customDose.type = 'button';
+  customDose.className = 'chip chip-add';
+  customDose.dataset.medAction = 'custom-dose';
+  customDose.setAttribute('aria-pressed', 'false');
+  customDose.textContent = 'Other dose';
+  doseChoices.append(customDose);
+  const doseForm = document.createElement('div');
+  doseForm.className = 'custom-add dose-custom-add';
+  doseForm.dataset.medicationDose = '';
+  doseForm.hidden = true;
+  const doseInput = document.createElement('input');
+  doseInput.type = 'text';
+  doseInput.dataset.medField = 'dose';
+  doseInput.value = dose;
+  doseInput.maxLength = 30;
+  doseInput.placeholder = 'Enter dose, e.g. 250 mg';
+  doseInput.setAttribute('aria-label', 'Other dose');
+  const addDose = document.createElement('button');
+  addDose.type = 'button';
+  addDose.className = 'btn btn-primary btn-sm';
+  addDose.dataset.medAction = 'custom-dose-confirm';
+  addDose.textContent = 'Add';
+  const cancelDose = document.createElement('button');
+  cancelDose.type = 'button';
+  cancelDose.className = 'btn btn-ghost btn-sm';
+  cancelDose.dataset.medAction = 'custom-dose-cancel';
+  cancelDose.textContent = 'Cancel';
+  doseForm.append(doseInput, addDose, cancelDose);
+
+  row.append(title, fields, doseLabel, doseChoices, doseForm,
+    ...makeHelpRating('How much did it help?', MEDICATION, effectiveness, ''));
   return row;
 }
 
@@ -508,6 +649,13 @@ function removeMedication(card, row) {
     const chip = card.querySelector(`[data-chips="relief"] .chip[data-value="${MEDICATION}"]`);
     chip.classList.remove('on');
     chip.setAttribute('aria-pressed', 'false');
+  }
+  const name = row.querySelector('[data-med-field="name"]').value;
+  const choice = [...panel.querySelectorAll('[data-med-action="select"]')]
+    .find(button => button.dataset.value === name);
+  if (choice) {
+    choice.classList.remove('on');
+    choice.setAttribute('aria-pressed', 'false');
   }
   showCardError(card, '');
 }
@@ -627,7 +775,7 @@ function handleChipClick(event, card) {
     if (turnOn && !panel) {
       const added = makeMedicationPanel([]);
       ratings.prepend(added);
-      added.querySelector('input').focus();
+      added.querySelector('[data-med-action="select"]').focus();
     }
     if (!turnOn && panel) panel.remove();
   } else if (container.dataset.chips === 'relief') {
@@ -646,7 +794,7 @@ function handleChipClick(event, card) {
 }
 
 function showCustomForm(type, card, container) {
-  card.querySelector('.custom-add')?.remove();
+  card.querySelector('.custom-add[data-custom-type]')?.remove();
   const form = document.createElement('div');
   form.className = 'custom-add';
   form.dataset.customType = type;
@@ -693,6 +841,7 @@ function addCustom(type, card, rawValue) {
   const currentChip = [...current.querySelectorAll(`[data-chips="${chipGroup}"] .chip[data-value]`)]
     .find(button => button.dataset.value === label);
   if (currentChip && !currentChip.classList.contains('on')) currentChip.click();
+  current.querySelector(`.custom-add[data-custom-type="${type}"]`)?.remove();
   showCardError(current, '');
 }
 
@@ -1240,7 +1389,7 @@ function renderBackupStatus() {
   const status = $('backupStatus');
   const hasAnythingToBackUp = count > 0 || entries.length > 0
     || state.customSymptoms.length > 0 || state.customCharacteristics.length > 0
-    || state.customRelief.length > 0 || state.customTriggers.length > 0;
+    || state.customRelief.length > 0 || state.customMedications.length > 0 || state.customTriggers.length > 0;
   if (!meta.lastExportAt) {
     status.textContent = hasAnythingToBackUp ? ' · Not backed up yet' : '';
     status.classList.toggle('stale', hasAnythingToBackUp);
@@ -1330,10 +1479,115 @@ list.addEventListener('click', event => {
     return;
   }
   const medAction = event.target.closest('[data-med-action]')?.dataset.medAction;
-  if (medAction === 'add') {
-    const row = makeMedicationRow();
-    event.target.closest('[data-medication-panel]').querySelector('.medication-list').append(row);
-    row.querySelector('input').focus();
+  if (medAction === 'select') {
+    const button = event.target.closest('[data-med-action="select"]');
+    const panel = button.closest('[data-medication-panel]');
+    const rows = panel.querySelector('.medication-list');
+    const existing = [...rows.querySelectorAll('[data-medication]')]
+      .find(row => row.querySelector('[data-med-field="name"]').value === button.dataset.value);
+    if (existing) removeMedication(card, existing);
+    else {
+      const row = makeMedicationRow({ name: button.dataset.value });
+      rows.append(row);
+      button.classList.add('on');
+      button.setAttribute('aria-pressed', 'true');
+    }
+    showCardError(card, '');
+    return;
+  }
+  if (medAction === 'remove-option') {
+    const remove = event.target.closest('[data-med-action="remove-option"]');
+    const panel = remove.closest('[data-medication-panel]');
+    const name = remove.dataset.remove;
+    const row = [...panel.querySelectorAll('[data-medication]')]
+      .find(item => item.querySelector('[data-med-field="name"]').value === name);
+    if (row) removeMedication(card, row);
+    remove.closest('.chip-wrap').remove();
+    if (persistState({ ...state, customMedications: state.customMedications.filter(item => item !== name) })) markChanged();
+    return;
+  }
+  if (medAction === 'add-own') {
+    showMedicationAddForm(event.target.closest('[data-medication-panel]'));
+    return;
+  }
+  if (medAction === 'add-own-confirm') {
+    addCustomMedication(card, event.target.closest('[data-medication-own]'));
+    return;
+  }
+  if (medAction === 'add-own-cancel') {
+    event.target.closest('[data-medication-own]').remove();
+    showCardError(card, '');
+    return;
+  }
+  if (medAction === 'remove-dose-option') {
+    const remove = event.target.closest('[data-med-action="remove-dose-option"]');
+    const row = remove.closest('[data-medication]');
+    const chip = remove.closest('.chip-wrap').querySelector('.chip');
+    if (chip.classList.contains('on')) row.querySelector('[data-med-field="dose"]').value = '';
+    remove.closest('.chip-wrap').remove();
+    showCardError(card, '');
+    return;
+  }
+  if (medAction === 'dose') {
+    const button = event.target.closest('[data-med-action="dose"]');
+    const row = button.closest('[data-medication]');
+    const turnOn = !button.classList.contains('on');
+    row.querySelector('[data-med-field="dose"]').value = turnOn ? button.dataset.dose : '';
+    row.querySelector('[data-medication-dose]').hidden = true;
+    for (const option of row.querySelectorAll('[data-med-action="dose"], [data-med-action="custom-dose"]')) {
+      const selected = turnOn && option === button;
+      option.classList.toggle('on', selected);
+      option.setAttribute('aria-pressed', String(selected));
+    }
+    showCardError(card, '');
+    return;
+  }
+  if (medAction === 'custom-dose') {
+    const button = event.target.closest('[data-med-action="custom-dose"]');
+    const row = button.closest('[data-medication]');
+    const input = row.querySelector('[data-med-field="dose"]');
+    const form = row.querySelector('[data-medication-dose]');
+    form.dataset.previousDose = input.value;
+    form.hidden = false;
+    input.focus();
+    input.select();
+    requestAnimationFrame(() => form.scrollIntoView({ behavior: 'smooth', block: 'nearest' }));
+    return;
+  }
+  if (medAction === 'custom-dose-confirm') {
+    const form = event.target.closest('[data-medication-dose]');
+    const row = form.closest('[data-medication]');
+    const input = form.querySelector('[data-med-field="dose"]');
+    const dose = medicationDoseLabel(input.value);
+    if (!dose) { showCardError(card, 'Enter a dose first.'); return; }
+    input.value = dose;
+    const custom = row.querySelector('[data-med-action="custom-dose"]');
+    let doseChip = [...row.querySelectorAll('[data-med-action="dose"]')]
+      .find(option => option.dataset.dose.toLocaleLowerCase() === dose.toLocaleLowerCase());
+    if (!doseChip) {
+      const rendered = makeChip(dose, true, true);
+      doseChip = rendered.querySelector('.chip');
+      doseChip.dataset.medAction = 'dose';
+      doseChip.dataset.dose = dose;
+      rendered.querySelector('.chip-x').dataset.medAction = 'remove-dose-option';
+      custom.before(rendered);
+    }
+    for (const option of row.querySelectorAll('[data-med-action="dose"], [data-med-action="custom-dose"]')) {
+      const selected = option === doseChip;
+      option.classList.toggle('on', selected);
+      option.setAttribute('aria-pressed', String(selected));
+    }
+    form.hidden = true;
+    showCardError(card, '');
+    return;
+  }
+  if (medAction === 'custom-dose-cancel') {
+    const form = event.target.closest('[data-medication-dose]');
+    const row = form.closest('[data-medication]');
+    const input = form.querySelector('[data-med-field="dose"]');
+    input.value = form.dataset.previousDose || '';
+    form.hidden = true;
+    showCardError(card, '');
     return;
   }
   if (medAction === 'remove') { removeMedication(card, event.target.closest('[data-medication]')); return; }
@@ -1361,6 +1615,14 @@ list.addEventListener('keydown', event => {
   if (event.key !== 'Enter' || !event.target.closest('.custom-add input')) return;
   event.preventDefault();
   const form = event.target.closest('.custom-add');
+  if (form.matches('[data-medication-own]')) {
+    addCustomMedication(event.target.closest('.entry'), form);
+    return;
+  }
+  if (form.matches('[data-medication-dose]')) {
+    form.querySelector('[data-med-action="custom-dose-confirm"]').click();
+    return;
+  }
   addCustom(form.dataset.customType, event.target.closest('.entry'), form.querySelector('input').value);
 });
 

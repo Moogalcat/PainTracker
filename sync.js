@@ -78,12 +78,13 @@ function settingsRecord(current, time) {
     customSymptoms: [...current.customSymptoms],
     customCharacteristics: [...current.customCharacteristics],
     customRelief: [...current.customRelief],
+    customMedications: [...current.customMedications],
     customTriggers: [...current.customTriggers],
     preferences: { ...current.preferences } };
 }
 
 function settingsValue(value) {
-  return [value.customSymptoms, value.customCharacteristics, value.customRelief,
+  return [value.customSymptoms, value.customCharacteristics, value.customRelief, value.customMedications,
     value.customTriggers, value.preferences];
 }
 
@@ -99,6 +100,7 @@ function normaliseCloudSettings(record) {
       customSymptoms: record.customSymptoms,
       customCharacteristics: record.customCharacteristics,
       customRelief: record.customRelief,
+      customMedications: record.customMedications,
       customTriggers: record.customTriggers,
       preferences: record.preferences,
     }, true);
@@ -197,6 +199,7 @@ async function applySnapshot(snapshot) {
           customSymptoms: cloudSettings.customSymptoms,
           customCharacteristics: cloudSettings.customCharacteristics,
           customRelief: cloudSettings.customRelief,
+          customMedications: cloudSettings.customMedications,
           customTriggers: cloudSettings.customTriggers,
           preferences: cloudSettings.preferences };
         reconciled.changed = true;

@@ -53,7 +53,7 @@ test('backup version 2 protects new fields while version 1 remains readable', ()
 
 test('backup round trip retains custom items and preferences', () => {
   const original = { ...state([entry({ characteristics: ['Throbbing'], relief: [{ name: 'Heat', effectiveness: 'Strong' }], impact: 2 })]), customSymptoms: ['Jaw pain'],
-    customCharacteristics: ['Heavy'], customRelief: ['Tea'], customTriggers: ['Stress'], preferences: { theme: 'dark', reminderMinutes: 960 } };
+    customCharacteristics: ['Heavy'], customRelief: ['Tea'], customMedications: ['Naproxen'], customTriggers: ['Stress'], preferences: { theme: 'dark', reminderMinutes: 960 } };
   const restored = D.parse(JSON.parse(JSON.stringify(original)), true);
   assert.deepEqual(restored.entries[0].symptoms, [{ name: 'Headache', intensity: 7 }]);
   assert.deepEqual(restored.entries[0].characteristics, ['Throbbing']);
@@ -62,6 +62,7 @@ test('backup round trip retains custom items and preferences', () => {
   assert.deepEqual(restored.customSymptoms, ['Jaw pain']);
   assert.deepEqual(restored.customCharacteristics, ['Heavy']);
   assert.deepEqual(restored.customRelief, ['Tea']);
+  assert.deepEqual(restored.customMedications, ['Naproxen']);
   assert.equal(restored.preferences.theme, 'dark');
   assert.equal(restored.preferences.reminderMinutes, 960);
 });
