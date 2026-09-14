@@ -160,6 +160,16 @@ const PainSyncData = (() => {
       .map(record => record.cloudId);
   }
 
+  // Mirrors the caps in firestore.rules, so the app never sends a record the rules would refuse.
+  const entryLists = ['symptoms', 'characteristics', 'relief', 'medications', 'triggers', 'knownCauses'];
+  const settingsLists = ['customSymptoms', 'customCharacteristics', 'customRelief', 'customMedications', 'customTriggers'];
+  function fitsCloud(record) {
+    if (record.kind === 'settings') return settingsLists.every(key => record[key].length <= 200);
+    if (typeof record.id !== 'string' || record.id.length > 128) return false;
+    return record.deleted === true || (record.entry.notes.length <= PainData.notesLimit
+      && entryLists.every(key => record.entry[key].length <= 200));
+  }
+
   function hasDiary(state) {
     return state.entries.length > 0 || [state.customSymptoms, state.customCharacteristics, state.customRelief,
       state.customMedications, state.customTriggers].some(list => list.length > 0);
@@ -185,7 +195,7 @@ const PainSyncData = (() => {
     };
   }
 
-  return { entryTime, isEntryChange, dedupeEntries, reconcileEntries, readSettings, supersededRecords,
+  return { entryTime, isEntryChange, dedupeEntries, reconcileEntries, readSettings, supersededRecords, fitsCloud,
     hasDiary, signInAction, chooseSettings };
 })();
 

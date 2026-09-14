@@ -285,3 +285,167 @@ test('CSV cells are quoted and cannot run as spreadsheet formulas', () => {
     assert.ok(D.csvCell(risky).startsWith('"\''), risky);
   }
 });
+
+const fs = require('node:fs');
+const path = require('node:path');
+const vm = require('node:vm');
+const readFile = file => fs.readFileSync(path.join(__dirname, '..', file), 'utf8');
+
+test('records beyond the caps in the Firestore rules are kept off the upload list', () => {
+  const upload = overrides => S.reconcileEntries(state([entry(overrides)]), []).uploads[0];
+  const many = count => Array.from({ length: count }, (_, index) => `Item ${index}`);
+  assert.equal(D.notesLimit, 50000);
+  assert.equal(S.fitsCloud(upload({ notes: 'x'.repeat(D.notesLimit), triggers: many(200) })), true);
+  assert.equal(S.fitsCloud(upload({ notes: 'x'.repeat(D.notesLimit + 1) })), false);
+  const oversizedLists = {
+    symptoms: many(201).map(name => ({ name, intensity: 1 })),
+    characteristics: many(201),
+    relief: many(201).map(name => ({ name, effectiveness: 'Some' })),
+    medications: many(201).map(name => ({ name, dose: '', effectiveness: 'Some' })),
+    triggers: many(201),
+    knownCauses: many(201),
+  };
+  for (const [key, items] of Object.entries(oversizedLists)) assert.equal(S.fitsCloud(upload({ [key]: items })), false, key);
+  assert.equal(S.fitsCloud(upload({ id: 'x'.repeat(129) })), false);
+  assert.equal(S.fitsCloud({ kind: 'entry', id: 'gone', deleted: true, modifiedAt: at }), true);
+  assert.equal(S.fitsCloud({ kind: 'entry', id: 'x'.repeat(129), deleted: true, modifiedAt: at }), false);
+  const settings = { kind: 'settings', modifiedAt: at, customSymptoms: [], customCharacteristics: [], customRelief: [],
+    customMedications: [], customTriggers: [], preferences: { theme: 'system', reminderMinutes: 0 } };
+  assert.equal(S.fitsCloud(settings), true);
+  for (const key of ['customSymptoms', 'customCharacteristics', 'customRelief', 'customMedications', 'customTriggers']) {
+    assert.equal(S.fitsCloud({ ...settings, [key]: many(201) }), false, key);
+  }
+});
+
+test('the notes editor and the cloud checks stop at the limits the Firestore rules accept', () => {
+  assert.match(readFile('index.html'), new RegExp(`<textarea data-field="notes"[^>]*maxlength="${D.notesLimit}"`));
+  const rules = readFile('firestore.rules');
+  assert.match(rules, new RegExp(`isText\\(entry\\.notes, ${D.notesLimit}\\)`));
+  assert.match(rules, /value is list && value\.size\(\) <= 200;/);
+  assert.match(rules, /isText\(data\.id, 128\)/);
+});
+
+// Runs the real sync.js against a fake Firestore that behaves like the SDK: writes show as pending at once and a
+// refused request is rolled back into a new snapshot. Like the deployed rules, it refuses requests of more than
+// 20 writes (each write looks up config/access, and a batch may make 20 lookups) and notes over the cap.
+function syncHost({ entries = [], cloud = [] } = {}) {
+  const copy = value => JSON.parse(JSON.stringify(value));
+  let diary = { ...D.empty(), entries };
+  const docs = new Map(cloud);
+  const pending = new Map();
+  const requests = [];
+  const elements = new Map();
+  const element = id => {
+    if (!elements.has(id)) elements.set(id, { textContent: '', hidden: true, classList: { toggle() {} }, addEventListener() {} });
+    return elements.get(id);
+  };
+  let listener;
+  let nextId = 0;
+  let refuseAll = false;
+  const snapshot = () => {
+    const items = [...[...docs].map(([id, data]) => ({ id, data, waiting: false })),
+      ...[...pending].map(([id, data]) => ({ id, data, waiting: true }))];
+    return { docs: items.map(item => ({ id: item.id, data: () => copy(item.data), metadata: { hasPendingWrites: item.waiting } })),
+      metadata: { fromCache: false, hasPendingWrites: pending.size > 0 } };
+  };
+  const emit = () => {
+    const current = snapshot();
+    setImmediate(() => listener?.(current));
+  };
+  const firestore = {
+    collection: () => ({}),
+    doc: (_collection, id) => ({ id: id ?? `cloud-${String(++nextId).padStart(4, '0')}` }),
+    query: collection => collection, where: () => ({}), limit: () => ({}),
+    getDocs: async () => snapshot(), signOut: async () => {}, waitForPendingWrites: async () => {},
+    onSnapshot(_query, _options, next) { listener = next; emit(); return () => { listener = undefined; }; },
+    writeBatch() {
+      const writes = [];
+      return {
+        set: (ref, data) => writes.push({ id: ref.id, data: copy(data) }),
+        delete: ref => writes.push({ id: ref.id }),
+        commit() {
+          if (requests.length >= 200) return new Promise(() => {}); // stop a retry loop from running forever
+          requests.push(writes.length);
+          for (const write of writes) if (write.data) pending.set(write.id, write.data);
+          emit();
+          return new Promise((resolve, reject) => setImmediate(() => {
+            for (const write of writes) pending.delete(write.id);
+            const refused = refuseAll || writes.length > 20 || writes.some(write => write.data?.entry?.notes.length > 50000);
+            if (!refused) for (const write of writes) write.data ? docs.set(write.id, write.data) : docs.delete(write.id);
+            emit();
+            if (refused) reject(Object.assign(new Error('Missing or insufficient permissions.'), { code: 'permission-denied' }));
+            else resolve();
+          }));
+        },
+      };
+    },
+  };
+  const context = vm.createContext({ console: { error() {}, warn() {} }, setTimeout, clearTimeout,
+    navigator: { onLine: true }, document: { getElementById: element },
+    localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
+    window: { confirm: () => true, PainTrackerAppSync: { getState: () => copy(diary), isCurrent: () => true,
+      applyState(value) { diary = copy(value); return true; }, clearDiary() { diary = D.empty(); return true; } } },
+    firestore });
+  for (const file of ['data.js', 'sync-data.js', 'sync.js']) vm.runInContext(readFile(file), context, { filename: file });
+  vm.runInContext('firebaseApi = firestore; db = {}; auth = {};', context);
+  return {
+    requests, docs,
+    get diary() { return diary; },
+    status: () => element('syncStatus').textContent,
+    message: () => element('syncResult').textContent,
+    refuseWrites(value) { refuseAll = value; },
+    cloudEntries: () => [...docs.values()].filter(record => record.kind === 'entry' && !record.deleted).map(record => record.id).sort(),
+    async signIn() {
+      vm.runInContext("watchUser({ uid: 'account-a', email: 'a@example.com' })", context);
+      await new Promise(resolve => setTimeout(resolve, 100));
+    },
+  };
+}
+
+test('sync sends cloud writes ten at a time, so a large first sync fits the rules limits', async () => {
+  const entries = Array.from({ length: 25 }, (_, index) => entry({ id: `pain-${index}`,
+    at: new Date(Date.UTC(2026, 8, 1, index)).toISOString() }));
+  const host = syncHost({ entries });
+  await host.signIn();
+  assert.ok(Math.max(...host.requests) <= 10, `largest request had ${Math.max(...host.requests)} writes`);
+  assert.equal(host.cloudEntries().length, 25);
+  assert.equal(host.status(), ' · Synced');
+});
+
+test('sync removes superseded cloud copies ten at a time', async () => {
+  const latest = entry({ updatedAt: '2026-09-14T00:00:00.000Z' });
+  const record = (modifiedAt, value) => ({ kind: 'entry', id: latest.id, deleted: false, modifiedAt, entry: value,
+    generation: 1, deviceId: 'other-device' });
+  const cloud = Array.from({ length: 30 }, (_, index) => {
+    const modifiedAt = new Date(Date.UTC(2026, 8, 13, 0, index)).toISOString();
+    return [`old-${String(index).padStart(2, '0')}`, record(modifiedAt, { ...latest, updatedAt: modifiedAt })];
+  });
+  cloud.push(['latest', record(latest.updatedAt, latest)]);
+  const host = syncHost({ entries: [latest], cloud });
+  await host.signIn();
+  assert.ok(Math.max(...host.requests) <= 10, `largest request had ${Math.max(...host.requests)} writes`);
+  assert.deepEqual([...host.docs].filter(([, value]) => value.kind === 'entry').map(([id]) => id), ['latest']);
+});
+
+test('after the rules refuse a write, sync pauses for the session instead of retrying in a loop', async () => {
+  const host = syncHost({ entries: [entry()] });
+  host.refuseWrites(true);
+  await host.signIn();
+  assert.equal(host.requests.length, 1);
+  assert.equal(host.status(), ' · Paused');
+  assert.match(host.message(), /sign in again or reload/);
+  // Signing in again tries once more.
+  host.refuseWrites(false);
+  await host.signIn();
+  assert.deepEqual(host.cloudEntries(), ['pain-1']);
+});
+
+test('an entry too large for the rules stays on this device while the rest of the diary syncs', async () => {
+  const long = entry({ id: 'long-note', at: '2026-09-12T10:00:00.000Z', notes: 'x'.repeat(50001) });
+  const host = syncHost({ entries: [entry(), long] });
+  await host.signIn();
+  assert.deepEqual(host.cloudEntries(), ['pain-1']);
+  assert.match(host.message(), /1 entry is too large to sync/);
+  assert.deepEqual(host.diary.entries.map(item => item.id).sort(), ['long-note', 'pain-1']);
+  assert.ok(host.requests.length < 5, `${host.requests.length} requests`);
+});

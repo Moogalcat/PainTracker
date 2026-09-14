@@ -7,6 +7,8 @@ const PainData = (() => {
   const reliefLevels = ['None', 'Some', 'Strong'];
   const reminderMinutes = [0, 30, 60, 120, 240, 480, 960];
   const unknownMedicationName = 'Medication (name not recorded)';
+  // Matches the notes cap in firestore.rules and the notes editor's maxlength.
+  const notesLimit = 50000;
   const isDate = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
   const uid = () => globalThis.crypto?.randomUUID?.()
     || `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
@@ -227,7 +229,7 @@ const PainData = (() => {
     return `"${safe.replaceAll('"', '""')}"`;
   }
 
-  return { backupVersion, themes, reliefLevels, reminderMinutes, unknownMedicationName,
+  return { backupVersion, themes, reliefLevels, reminderMinutes, unknownMedicationName, notesLimit,
     uid, uniqueLabels, valid, normalise, contentKey, empty, parse, merge, toInput, fromInput, endState, csvCell };
 })();
 

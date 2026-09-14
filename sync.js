@@ -13,7 +13,9 @@ const syncResult = document.getElementById('syncResult');
 const SYNC_META_KEY = 'pain-tracker-sync-v1';
 const FIREBASE_VERSION = '12.18.0';
 const CHANGE_GENERATION = 1;
-const DELETE_BATCH_SIZE = 400;
+// Firestore applies its security rules limits per request (20 document lookups for a batch, and the rules look up
+// config/access for every write), so cloud writes and deletes go in small batches.
+const WRITE_BATCH_SIZE = 10;
 
 let firebaseApi;
 let auth;
@@ -115,10 +117,43 @@ function newest(records, key) {
   return [...latest.values()];
 }
 
+// Once Firebase refuses a write, this session sends nothing more. Skipping only the refused records is not enough:
+// the SDK rolls a refused write back into a new snapshot, which uploads the same records again, so the refusal
+// would repeat in a tight loop. Signing in again or reloading tries once more.
+let refusalMessage = '';
+// Codes for requests that would fail the same way on every retry, unlike a lost connection.
+const REFUSED_CODES = new Set(['permission-denied', 'invalid-argument']);
+
+// Something keeping changes off the cloud, shown until it is resolved.
+function syncProblem() {
+  if (refusalMessage) return refusalMessage;
+  const current = syncBridge.getState();
+  const problems = [];
+  const tooLarge = current.entries.filter(entry => !PainSyncData.fitsCloud(entryRecord(entry))).length;
+  if (tooLarge) {
+    problems.push(`${tooLarge} ${tooLarge === 1 ? 'entry is' : 'entries are'} too large to sync (notes over `
+      + `${PainData.notesLimit.toLocaleString('en-US')} characters, more than 200 items in a list, or an unusually `
+      + `long ID) and ${tooLarge === 1 ? 'stays' : 'stay'} on this device until shortened.`);
+  }
+  if (!PainSyncData.fitsCloud(settingsRecord(current, 0))) {
+    problems.push('Custom options and preferences stay on this device because a custom list has more than 200 items.');
+  }
+  return problems.join(' ');
+}
+
 function appendChanges(records) {
-  if (!activeUser || !records.length) return;
+  if (!activeUser || !records.length || refusalMessage) return;
+  const sendable = records.filter(record => PainSyncData.fitsCloud(record));
+  if (sendable.length < records.length) showSyncResult(syncProblem(), true);
+  if (!sendable.length) return;
   const changes = firebaseApi.collection(db, 'users', activeUser.uid, 'changes');
   setSyncStatus(navigator.onLine ? 'Syncing' : 'Offline');
+  for (let start = 0; start < sendable.length; start += WRITE_BATCH_SIZE) {
+    commitChanges(changes, sendable.slice(start, start + WRITE_BATCH_SIZE));
+  }
+}
+
+function commitChanges(changes, records) {
   const batch = firebaseApi.writeBatch(db);
   for (const record of records) {
     batch.set(firebaseApi.doc(changes), { ...record, generation: CHANGE_GENERATION,
@@ -126,18 +161,23 @@ function appendChanges(records) {
   }
   batch.commit().catch(error => {
     console.error('Cloud write failed', error);
-    setSyncStatus(navigator.onLine ? 'Error' : 'Offline');
-    showSyncResult(friendlyError(error), true);
+    if (REFUSED_CODES.has(error?.code) && !refusalMessage) {
+      refusalMessage = `${error.code === 'permission-denied' ? friendlyError(error) : 'Firebase refused a change.'} `
+        + 'Changes stay on this device until you sign in again or reload the app.';
+    }
+    setSyncStatus(refusalMessage ? 'Paused' : navigator.onLine ? 'Error' : 'Offline');
+    showSyncResult(refusalMessage || friendlyError(error), true);
   });
 }
 
-// The cloud keeps only the newest record for each entry and for settings.
+// The cloud keeps only the newest record for each entry and for settings. Each record is tried once per session,
+// so rules that refuse the delete cannot start a retry loop; a refusal is only logged.
 function removeSupersededRecords(records) {
   const cloudIds = PainSyncData.supersededRecords(records).filter(id => !removalRequested.has(id));
   const changes = firebaseApi.collection(db, 'users', activeUser.uid, 'changes');
-  for (let start = 0; start < cloudIds.length; start += DELETE_BATCH_SIZE) {
+  for (let start = 0; start < cloudIds.length; start += WRITE_BATCH_SIZE) {
     const batch = firebaseApi.writeBatch(db);
-    for (const cloudId of cloudIds.slice(start, start + DELETE_BATCH_SIZE)) {
+    for (const cloudId of cloudIds.slice(start, start + WRITE_BATCH_SIZE)) {
       removalRequested.add(cloudId);
       batch.delete(firebaseApi.doc(changes, cloudId));
     }
@@ -236,11 +276,15 @@ async function applySnapshot(snapshot) {
     appendChanges(uploads);
     removeSupersededRecords(records);
   }
-  if (reconciled.invalid) showSyncResult(`${reconciled.invalid} unreadable cloud record${reconciled.invalid === 1 ? '' : 's'} were ignored.`, true);
+  const problem = syncProblem();
+  if (refusalMessage) showSyncResult(refusalMessage, true);
+  else if (reconciled.invalid) showSyncResult(`${reconciled.invalid} unreadable cloud record${reconciled.invalid === 1 ? '' : 's'} were ignored.`, true);
   else if (remoteSettings && !cloudSettings) showSyncResult('Unreadable cloud settings were ignored.', true);
+  else if (problem) showSyncResult(problem, true);
   else if (!snapshot.metadata.hasPendingWrites) showSyncResult('');
-  setSyncStatus(snapshot.metadata.hasPendingWrites ? (navigator.onLine ? 'Syncing' : 'Offline')
-    : snapshot.metadata.fromCache && !navigator.onLine ? 'Offline' : 'Synced');
+  setSyncStatus(refusalMessage ? 'Paused'
+    : snapshot.metadata.hasPendingWrites ? (navigator.onLine ? 'Syncing' : 'Offline')
+      : snapshot.metadata.fromCache && !navigator.onLine ? 'Offline' : 'Synced');
 }
 
 function stopWatching() {
@@ -326,6 +370,8 @@ async function watchUser(user) {
     signOutMessage = '';
     return;
   }
+  // Signing in again tries once more after an earlier refusal.
+  refusalMessage = '';
   setSyncStatus(navigator.onLine ? 'Connecting' : 'Offline');
   const changes = firebaseApi.query(
     firebaseApi.collection(db, 'users', user.uid, 'changes'),
