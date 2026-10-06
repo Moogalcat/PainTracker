@@ -136,7 +136,8 @@ function markChanged() {
 const timeFmt = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 const dateFmt = new Intl.DateTimeFormat(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 const dateFmtYear = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
-const monthFmt = new Intl.DateTimeFormat(undefined, { month: 'short' });
+const sinceFmt = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short' });
+const monthFmt =new Intl.DateTimeFormat(undefined, { month: 'short' });
 
 function describe(date) {
   const now = new Date();
@@ -1037,8 +1038,10 @@ function repeatEntry(card) {
 
 function renderTally() {
   if (!entries.length) { $('tally').textContent = 'Ready when you are'; return; }
-  const days = new Set(entries.map(entry => entry.at.slice(0, 10))).size;
-  $('tally').textContent = `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} across ${days} ${days === 1 ? 'day' : 'days'}`;
+  // Entries are kept newest first, so the last one shows when the diary starts.
+  const first = new Date(entries[entries.length - 1].at);
+  const since = first.getFullYear() === new Date().getFullYear() ? sinceFmt.format(first) : dateFmtYear.format(first);
+  $('tally').textContent = `${entries.length} ${entries.length === 1 ? 'entry' : 'entries'} since ${since}`;
 }
 
 function statBlock(title) {
