@@ -21,8 +21,9 @@ const BUILT_IN_CHARACTERISTICS = [
   'Sharp', 'Dull', 'Aching', 'Burning', 'Throbbing',
   'Cramping', 'Pressure', 'Tingling', 'Radiating',
 ];
-const BUILT_IN_RELIEF = ['Medication', 'Rest', 'Heat', 'Cold', 'Stretching', 'Hydration', 'Food', 'Movement'];
+const BUILT_IN_RELIEF = ['None', 'Medication', 'Rest', 'Heat', 'Cold', 'Stretching', 'Hydration', 'Food', 'Movement'];
 const MEDICATION = 'Medication';
+const NO_RELIEF = 'None';
 const DEFAULT_MEDICATION_DOSES = ['200 mg', '500 mg', '1000 mg'];
 const BUILT_IN_MEDICATIONS = {
   Ibuprofen: DEFAULT_MEDICATION_DOSES,
@@ -458,6 +459,8 @@ function makeReliefRow(name, effectiveness = null) {
   const row = document.createElement('div');
   row.className = 'relief-row';
   row.dataset.relief = name;
+  // “None” is saved like a relief attempt but has nothing to rate.
+  if (name === NO_RELIEF) { row.hidden = true; return row; }
   if (PainData.reliefLevels.includes(effectiveness)) row.dataset.effectiveness = effectiveness;
   row.append(...makeHelpRating(name, name, effectiveness));
   return row;
@@ -774,6 +777,17 @@ function handleChipClick(event, card) {
     for (const option of container.querySelectorAll('.chip.on')) {
       option.classList.remove('on');
       option.setAttribute('aria-pressed', 'false');
+    }
+  }
+  // “None” for relief attempts cannot be combined with any other attempt.
+  if (container.dataset.chips === 'relief' && turnOn) {
+    for (const option of container.querySelectorAll('.chip.on')) {
+      if ((chip.dataset.value === NO_RELIEF) === (option.dataset.value === NO_RELIEF)) continue;
+      option.classList.remove('on');
+      option.setAttribute('aria-pressed', 'false');
+      const ratings = card.querySelector('[data-relief-ratings]');
+      if (option.dataset.value === MEDICATION) ratings.querySelector('[data-medication-panel]')?.remove();
+      else [...ratings.children].find(row => row.dataset.relief === option.dataset.value)?.remove();
     }
   }
   chip.classList.toggle('on', turnOn);
